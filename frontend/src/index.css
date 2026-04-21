@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .btn-primary {
+    @apply rounded-xl bg-gradient-to-r from-pink-400 to-orange-400 px-6 py-2 font-semibold text-white shadow-md transition-all duration-300;
+  }
+  .btn-primary:hover {
+    @apply -translate-y-0.5 bg-gradient-to-r from-orange-400 to-pink-500 shadow-lg;
+  }
+}
