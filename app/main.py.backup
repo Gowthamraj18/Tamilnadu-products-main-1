@@ -305,8 +305,6 @@ class AdminCreateProductPayload(BaseModel):
     stock: int = 0
     featured: bool = False
     active: bool = True
-
-
 class CreatePaymentOrderPayload(BaseModel):
     amount: int
     orderId: str
@@ -528,13 +526,31 @@ async def register(payload: RegisterPayload, session: SessionDep) -> JSONRespons
     if not sent:
         # Log the error but don't fail registration for development
         logging.getLogger("app").warning("OTP email not sent: %s", send_err or "Unknown error")
+    user = User(
+        first_name=payload.firstName,
+        last_name=payload.lastName,
+        email=email,
+        phone=phone,
+        password_hash=hash_password(payload.password),
+        role="customer",
+    )
+    session.add(user)
+    await session.flush()
+    await session.refresh(user)
 
+    ud = user_orm_to_api_dict(user)
+    token = create_access_token(
+        user_id=str(user.id),
+        role=user.role,
+        jwt_secret=settings["jwt_secret"],
+        expires_days=7,
+    )
     return JSONResponse(
         status_code=201,
         content={
             "success": True,
-            "message": "OTP sent. Verify OTP to complete registration.",
-            "data": {"email": email, "purpose": "register", "otp": _otp_debug_value(otp)},
+            "message": "Registration successful",
+            "data": {"user": public_user_profile(ud), "token": token, "role": user.role},
         },
     )
 
@@ -643,6 +659,11 @@ async def verify_otp(payload: VerifyOtpPayload, session: SessionDep) -> JSONResp
     user.email_verified = True
     session.add(user)
     _otp_store.pop(email, None)
+    now = datetime.now(timezone.utc)
+    user.last_login = now
+    user.login_count = user.login_count + 1
+    session.add(user)
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 
     ud = user_orm_to_api_dict(user)
     token = create_access_token(
@@ -651,11 +672,15 @@ async def verify_otp(payload: VerifyOtpPayload, session: SessionDep) -> JSONResp
         jwt_secret=settings["jwt_secret"],
         expires_days=7,
     )
+
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
     return JSONResponse(
         status_code=200,
         content={
             "success": True,
+            "message": "Login verified successfully",
             "message": "Login successful",
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
             "data": {
                 "user": public_user_profile(ud),
                 "token": token,
@@ -667,7 +692,9 @@ async def verify_otp(payload: VerifyOtpPayload, session: SessionDep) -> JSONResp
 
 @app.post("/api/auth/admin/login")
 async def admin_login(payload: LoginPayload, session: SessionDep) -> JSONResponse:
+    ADMIN_EMAIL = "sridhargtn@gmail.com"
     ADMIN_EMAIL = "admin@tamilnaduproducts.com"
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 
     if payload.email.lower() != ADMIN_EMAIL:
         return _json_error(403, message="Access denied. Only admin can access this portal.")
@@ -730,15 +757,17 @@ async def me(request: Request, session: SessionDep) -> JSONResponse:
     ud = user_orm_to_api_dict(user)
     return JSONResponse(
         status_code=200,
-        content={
-            "success": True,
-            "data": public_user_profile(ud),
-        },
+        content={"success": True, "data": {"user": public_user_profile(ud), "role": user.role}},
     )
 
 
+@app.post("/api/auth/logout")
+async def logout() -> JSONResponse:
+    return JSONResponse(status_code=200, content={"success": True, "message": "Logout successful"})
+
+
 @app.put("/api/auth/profile")
-async def update_profile(payload: ProfilePayload, request: Request, session: SessionDep) -> JSONResponse:
+async def update_profile(request: Request, payload: ProfilePayload, session: SessionDep) -> JSONResponse:
     user_doc, err = await _get_authenticated_user(request, session)
     if err:
         return err
@@ -753,50 +782,50 @@ async def update_profile(payload: ProfilePayload, request: Request, session: Ses
         user.first_name = payload.firstName
     if payload.lastName is not None:
         user.last_name = payload.lastName
-    if payload.email is not None:
-        new_email = payload.email.lower()
-        if new_email != user.email:
-            existing = (await session.execute(select(User).where(User.email == new_email))).scalar_one_or_none()
-            if existing:
-                return _json_error(400, message="Email already registered")
-            user.email = new_email
     if payload.phone is not None:
-        new_phone = payload.phone
-        if new_phone != user.phone:
-            existing = (await session.execute(select(User).where(User.phone == new_phone))).scalar_one_or_none()
-            if existing:
-                return _json_error(400, message="Phone number already registered")
-            user.phone = new_phone
+        user.phone = payload.phone
+    if payload.email is not None:
+        user.email = str(payload.email).lower()
     if payload.address is not None:
-        user.address_json = json.dumps(payload.address)
-
-    user.updated_at = datetime.now(timezone.utc)
+        user.address_json = _json_dumps(payload.address)
     session.add(user)
-    await session.flush()
 
     ud = user_orm_to_api_dict(user)
     return JSONResponse(
         status_code=200,
         content={
             "success": True,
-            "message": "Profile updated successfully",
-            "data": public_user_profile(ud),
+            "data": {"user": public_user_profile(ud), "message": "Profile updated successfully"},
         },
     )
 
 
+@app.get("/api/orders/customer")
+async def customer_orders(request: Request, session: SessionDep) -> JSONResponse:
+    user_doc, err = await _get_authenticated_user(request, session)
+    if err:
+        return err
+
+    cid = int(user_doc["_id"])
+    result = await session.execute(select(Order).where(Order.customer_id == cid).order_by(desc(Order.created_at)).limit(200))
+    rows = result.scalars().all()
+    out = [order_orm_to_api_dict(o) for o in rows]
+    return JSONResponse(status_code=200, content={"success": True, "data": {"orders": serialize_document(out)}})
+
+
 @app.get("/api/products")
-async def list_products(request: Request, session: SessionDep) -> JSONResponse:
-    q = request.query_params
-    page = int(q.get("page", 1))
-    limit = int(q.get("limit", 20))
-    category = q.get("category")
-    search = q.get("search")
-    featured = q.get("featured")
-    min_price_raw = q.get("minPrice")
-    max_price_raw = q.get("maxPrice")
-    size = q.get("size")
-    color = q.get("color")
+async def get_products(request: Request, session: SessionDep) -> JSONResponse:
+    query_params = request.query_params
+    page = int(query_params.get("page") or 1)
+    limit = int(query_params.get("limit") or 12)
+    category = query_params.get("category")
+    search = query_params.get("search")
+    sort = query_params.get("sort") or "featured"
+    min_price_raw = query_params.get("minPrice")
+    max_price_raw = query_params.get("maxPrice")
+    size = query_params.get("size")
+    color = query_params.get("color")
+    featured = query_params.get("featured")
 
     conds = _product_list_filters(
         category=category,
@@ -807,31 +836,45 @@ async def list_products(request: Request, session: SessionDep) -> JSONResponse:
         size=size,
         color=color,
     )
+    where_clause = and_(*conds) if conds else True  # type: ignore[assignment]
 
-    result = await session.execute(
-        select(Product)
-        .where(and_(*conds))
-        .order_by(Product.featured.desc(), Product.created_at.desc())
-        .limit(limit)
-        .offset((page - 1) * limit)
-    )
-    products = result.scalars().all()
+    stmt: Select[Tuple[Product]] = select(Product).where(where_clause)
+    if sort == "price-low":
+        stmt = stmt.order_by(asc(Product.price))
+    elif sort == "price-high":
+        stmt = stmt.order_by(desc(Product.price))
+    elif sort == "newest":
+        stmt = stmt.order_by(desc(Product.created_at))
+    elif sort == "rating":
+        stmt = stmt.order_by(desc(Product.rating))
+    elif sort == "name-asc":
+        stmt = stmt.order_by(asc(Product.name))
+    elif sort == "name-desc":
+        stmt = stmt.order_by(desc(Product.name))
+    else:
+        stmt = stmt.order_by(desc(Product.featured), desc(Product.created_at))
 
-    total_result = await session.execute(
-        select(func.count(Product.id)).where(and_(*conds))
-    )
-    total = total_result.scalar() or 0
+    skip = (page - 1) * limit
+    stmt = stmt.offset(skip).limit(limit)
+
+    total_res = await session.execute(select(func.count()).select_from(Product).where(where_clause))
+    total = int(total_res.scalar_one() or 0)
+
+    res = await session.execute(stmt)
+    products = res.scalars().all()
+    docs = [product_orm_to_api_dict(p) for p in products]
 
     return JSONResponse(
         status_code=200,
         content={
             "success": True,
             "data": {
-                "products": [product_orm_to_api_dict(p) for p in products],
+                "products": serialize_document(docs),
                 "pagination": {
-                    "current": page,
-                    "pages": int(math.ceil(total / float(limit))) if limit else 1,
+                    "page": page,
+                    "limit": limit,
                     "total": total,
+                    "pages": int(math.ceil(total / float(limit))) if limit else 1,
                 },
             },
         },
@@ -842,24 +885,27 @@ async def list_products(request: Request, session: SessionDep) -> JSONResponse:
 async def get_product(product_id: str, session: SessionDep) -> JSONResponse:
     pid = safe_int_id(product_id)
     if pid is None:
-        return _json_error(400, message="Invalid product ID")
+        return _json_error(404, error="Product not found")
 
-    result = await session.execute(select(Product).where(Product.id == pid, Product.active.is_(True)))
-    product = result.scalar_one_or_none()
-    if not product:
-        return _json_error(404, message="Product not found")
+    result = await session.execute(select(Product).where(Product.id == pid))
+    p = result.scalar_one_or_none()
+    if not p:
+        return _json_error(404, error="Product not found")
 
-    return JSONResponse(
-        status_code=200,
-        content={
-            "success": True,
-            "data": product_orm_to_api_dict(product),
-        },
-    )
+    return JSONResponse(status_code=200, content={"success": True, "data": serialize_document(product_orm_to_api_dict(p))})
 
 
-def _base36_encode(num: int) -> str:
-    digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+def _generate_order_id() -> str:
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    timestamp36 = base36(now_ms)
+    random_part = base36(int(random.random() * 1e9)).upper()[:5]
+    return f"TNP{timestamp36}{random_part}".upper()
+
+
+def base36(num: int) -> str:
+    digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+    if num < 0:
+        return "-" + base36(-num)
     if num == 0:
         return "0"
     out = ""
@@ -880,46 +926,53 @@ async def _validate_order_items_stock(session: AsyncSession, products_payload: L
         if qty <= 0:
             return _json_error(400, message="Each product must have quantity greater than zero")
         result = await session.execute(select(Product).where(Product.id == pid))
-        product = result.scalar_one_or_none()
-        if not product:
-            return _json_error(400, message=f"Product with ID {pid} not found")
-        if not product.active:
-            return _json_error(400, message=f"Product {product.name} is not available")
-        size_stock = json.loads(product.size_stock_json or "{}")
-        size = p.get("size", "M")
-        available = int(size_stock.get(size, product.stock or 0))
-        if qty > available:
-            return _json_error(400, message=f"Insufficient stock for {product.name} (size {size}). Available: {available}")
+        prod = result.scalar_one_or_none()
+        if not prod:
+            return _json_error(400, message="One or more products are no longer available")
+        if prod.stock < qty:
+            return _json_error(
+                400,
+                message=f'Not enough stock for "{prod.name}". Only {prod.stock} left.',
+            )
     return None
 
 
-async def _decrement_stock_for_order_items(session: AsyncSession, products_payload: List[Dict[str, Any]]) -> Optional[JSONResponse]:
-    """Decrement stock for ordered items."""
-    for p in products_payload:
-        pid = safe_int_id(p.get("productId"))
-        qty = int(p.get("quantity") or 0)
-        result = await session.execute(select(Product).where(Product.id == pid))
-        product = result.scalar_one_or_none()
-        if not product:
+async def _decrement_stock_for_order_items(session: AsyncSession, items: List[Dict[str, Any]]) -> Optional[JSONResponse]:
+    """Reduce inventory when payment succeeds (same quantities as order line items)."""
+    for item in items:
+        pid = safe_int_id(item.get("product"))
+        qty = int(item.get("quantity") or 0)
+        if pid is None or qty <= 0:
             continue
-        size_stock = json.loads(product.size_stock_json or "{}")
-        size = p.get("size", "M")
-        current_stock = int(size_stock.get(size, product.stock or 0))
-        new_stock = max(0, current_stock - qty)
-        if size in size_stock:
-            size_stock[size] = new_stock
-        else:
-            product.stock = new_stock
-        product.size_stock_json = json.dumps(size_stock)
-        session.add(product)
+        result = await session.execute(select(Product).where(Product.id == pid))
+        prod = result.scalar_one_or_none()
+        if not prod:
+            return _json_error(400, error="Order contains a product that no longer exists")
+        if prod.stock < qty:
+            return _json_error(
+                400,
+                error=f'Not enough stock for "{prod.name}". Only {prod.stock} left.',
+            )
+    for item in items:
+        pid = safe_int_id(item.get("product"))
+        qty = int(item.get("quantity") or 0)
+        if pid is None or qty <= 0:
+            continue
+        result = await session.execute(select(Product).where(Product.id == pid))
+        prod = result.scalar_one_or_none()
+        if prod is None:
+            continue
+        prod.stock -= qty
+        session.add(prod)
     return None
 
 
 @app.post("/api/orders/create-order", status_code=201)
 async def create_order(payload: CreateOrderPayload, request: Request, session: SessionDep) -> JSONResponse:
-    user_doc, err = await _get_authenticated_user(request, session)
-    if err:
-        return err
+    user_doc, auth_err = await _get_authenticated_user(request, session)
+    if auth_err:
+        return auth_err
+
     uid = int(user_doc["_id"])
     account_email = (user_doc.get("email") or "").lower()
     if str(payload.customerEmail).lower() != account_email:
@@ -930,30 +983,40 @@ async def create_order(payload: CreateOrderPayload, request: Request, session: S
     stock_err = await _validate_order_items_stock(session, payload.products)
     if stock_err:
         return stock_err
+@app.post("/api/orders/create-order", status_code=201)
+async def create_guest_order(payload: CreateOrderPayload, session: SessionDep) -> JSONResponse:
+    now = datetime.now(timezone.utc)
 
-    order_id = f"ORD-{now.strftime('%Y%m%d')}-{_base36_encode(now.timestamp() * 1000)}"
+    customer_id: Optional[int] = None
+    ur = await session.execute(select(User).where(User.email == payload.customerEmail.lower()))
+    eu = ur.scalar_one_or_none()
+    if eu:
+        customer_id = eu.id
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 
-    items = []
+    order_id = _generate_order_id()
+
+    items: List[Dict[str, Any]] = []
     for p in payload.products:
-        result = await session.execute(select(Product).where(Product.id == int(p["productId"])))
-        product = result.scalar_one_or_none()
-        if product:
-            items.append(
-                {
-                    "productId": product.id,
-                    "name": product.name,
-                    "price": p.get("price") or product.price,
-                    "quantity": p.get("quantity"),
-                    "size": p.get("size") or "M",
-                    "image": p.get("image"),
-                    "subtotal": (p.get("price") or 0) * (p.get("quantity") or 0),
-                }
-            )
+        pid = safe_int_id(p.get("productId"))
+        items.append(
+            {
+                "product": pid if pid is not None else p.get("productId"),
+                "name": p.get("name"),
+                "price": p.get("price"),
+                "quantity": p.get("quantity"),
+                "size": p.get("size") or "M",
+                "image": p.get("image"),
+                "subtotal": (p.get("price") or 0) * (p.get("quantity") or 0),
+            }
+        )
 
     shipping_address: Dict[str, Any] = {
         "fullName": payload.customerName,
         "phone": payload.customerPhone,
+        "email": account_email,
         "email": payload.customerEmail.lower(),
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
         "country": "India",
         **payload.shippingAddress,
     }
@@ -962,12 +1025,16 @@ async def create_order(payload: CreateOrderPayload, request: Request, session: S
     order_row = Order(
         order_id=order_id,
         customer_id=uid,
+        customer_id=customer_id,
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
         items_json=_json_dumps(items),
         shipping_json=_json_dumps(shipping_address),
         subtotal=payload.totalAmount,
         total=payload.totalAmount,
         status="ordered",
         payment_method="razorpay",
+        payment_method="cod",
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
         payment_status="pending",
         status_history_json=_json_dumps(hist),
     )
@@ -979,59 +1046,54 @@ async def create_order(payload: CreateOrderPayload, request: Request, session: S
         content={
             "success": True,
             "message": "Order created successfully",
+            "data": serialize_document(
+                {
+                    "orderId": order_id,
+                    "status": "ordered",
+                    "total": payload.totalAmount,
+                    "createdAt": now,
+                }
+            ),
             "data": {
                 "orderId": order_id,
                 "status": "ordered",
                 "total": payload.totalAmount,
                 "createdAt": now,
             },
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
         },
     )
 
 
-@app.get("/api/orders/my-orders")
-async def my_orders(request: Request, session: SessionDep) -> JSONResponse:
-    user_doc, err = await _get_authenticated_user(request, session)
-    if err:
-        return err
-    uid = int(user_doc["_id"])
+@app.get("/api/orders/track-order/{order_id}")
+async def track_order(order_id: str, session: SessionDep) -> JSONResponse:
+    result = await session.execute(select(Order).where(Order.order_id == order_id.upper()))
+    doc = result.scalar_one_or_none()
+    if not doc:
+        return _json_error(404, message="Order not found")
 
-    q = request.query_params
-    page = int(q.get("page", 1))
-    limit = int(q.get("limit", 10))
-
-    result = await session.execute(
-        select(Order)
-        .where(Order.customer_id == uid)
-        .order_by(Order.created_at.desc())
-        .limit(limit)
-        .offset((page - 1) * limit)
-    )
-    orders = result.scalars().all()
-
-    total_result = await session.execute(
-        select(func.count(Order.id)).where(Order.customer_id == uid)
-    )
-    total = total_result.scalar() or 0
-
-    return JSONResponse(
-        status_code=200,
-        content={
-            "success": True,
-            "data": {
-                "orders": [order_orm_to_api_dict(o) for o in orders],
-                "pagination": {
-                    "current": page,
-                    "pages": int(math.ceil(total / float(limit))) if limit else 1,
-                    "total": total,
-                },
-            },
-        },
+    o = order_orm_to_api_dict(doc)
+    response_doc = serialize_document(
+        {
+            "orderId": o.get("orderId"),
+            "status": o.get("status"),
+            "total": o.get("total"),
+            "createdAt": o.get("createdAt"),
+            "items": o.get("items") or [],
+            "shippingAddress": o.get("shippingAddress") or {},
+            "paymentStatus": o.get("paymentStatus"),
+            "paymentMethod": o.get("paymentMethod"),
+            "statusHistory": o.get("statusHistory") or [],
+            "trackingNumber": o.get("trackingNumber"),
+            "estimatedDelivery": o.get("estimatedDelivery"),
+        }
     )
 
+    return JSONResponse(status_code=200, content={"success": True, "data": response_doc})
 
-@app.get("/api/orders/order-status-options")
-async def order_status_options() -> JSONResponse:
+
+@app.get("/api/orders/status-options")
+async def status_options() -> JSONResponse:
     opts = [
         {"value": "ordered", "label": "Ordered", "description": "Order has been placed"},
         {"value": "shipped", "label": "Shipped", "description": "Order has been shipped"},
@@ -1052,6 +1114,8 @@ async def update_order_status(
     if admin_err:
         return admin_err
 
+async def update_order_status(order_id: str, payload: UpdateOrderStatusPayload, session: SessionDep) -> JSONResponse:
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
     now = datetime.now(timezone.utc)
 
     if not payload.status:
@@ -1062,26 +1126,54 @@ async def update_order_status(
     if not doc:
         return _json_error(404, message="Order not found")
 
+    valid_progressions = {
+        "ordered": ["shipped"],
+        "confirmed": ["shipped"],
+        "shipped": ["out-for-delivery"],
+        "out-for-delivery": ["delivered"],
+        "delivered": [],
+    }
+
+    current_status = doc.status
+    allowed = valid_progressions.get(current_status, [])
+    if payload.status not in allowed:
+        return _json_error(400, message=f"Cannot update status from {current_status} to {payload.status}")
+
+    old_status = current_status
     doc.status = payload.status
     hist = json.loads(doc.status_history_json or "[]")
-    hist.append({"status": payload.status, "timestamp": now, "note": payload.note or ""})
-    doc.status_history_json = json.dumps(hist)
-    if payload.note:
-        doc.notes = payload.note
+    hist.append(
+        {
+            "status": payload.status,
+            "timestamp": now,
+            "note": payload.note or f"Status updated from {old_status} to {payload.status}",
+        }
+    )
+    doc.status_history_json = _json_dumps(hist)
+
+    if payload.status == "shipped":
+        doc.estimated_delivery = now + timedelta(days=5)
+        doc.tracking_number = f"TRK{secrets.token_hex(5)[:10].upper()}"
+
+    if payload.status == "delivered":
+        doc.actual_delivery = now
+        doc.payment_status = "completed"
+
     session.add(doc)
 
+    o = order_orm_to_api_dict(doc)
     return JSONResponse(
         status_code=200,
         content={
             "success": True,
             "message": "Order status updated successfully",
             "data": {
-                "orderId": doc.order_id,
-                "status": doc.get("status"),
-                "trackingNumber": doc.get("trackingNumber"),
-                "estimatedDelivery": doc.get("estimatedDelivery"),
-                "actualDelivery": doc.get("actualDelivery"),
-                "updatedAt": doc.get("updatedAt") or now,
+                "orderId": o.get("orderId"),
+                "status": o.get("status"),
+                "trackingNumber": o.get("trackingNumber"),
+                "estimatedDelivery": o.get("estimatedDelivery"),
+                "actualDelivery": o.get("actualDelivery"),
+                "updatedAt": o.get("updatedAt") or now,
             },
         },
     )
@@ -1101,6 +1193,10 @@ async def payments_create_order(
     if auth_err:
         return auth_err
     uid = int(user_doc["_id"])
+
+@app.post("/api/payments/create-order")
+async def payments_create_order(payload: CreatePaymentOrderPayload, session: SessionDep) -> JSONResponse:
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
     razor_key_id = settings.get("razorpay_key_id")
     razor_key_secret = settings.get("razorpay_key_secret")
     if not razor_key_id or not razor_key_secret:
@@ -1134,6 +1230,9 @@ async def payments_verify(payload: VerifyPaymentPayload, request: Request, sessi
     if auth_err:
         return auth_err
     uid = int(user_doc["_id"])
+
+async def payments_verify(payload: VerifyPaymentPayload, session: SessionDep) -> JSONResponse:
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
     razor_key_secret = settings.get("razorpay_key_secret")
     if not razor_key_secret:
         return _json_error(500, error="Payment service not configured")
@@ -1174,39 +1273,253 @@ async def payments_verify(payload: VerifyPaymentPayload, request: Request, sessi
         content={
             "success": True,
             "message": "Payment verified successfully",
-            "data": {
-                "orderId": order_doc.order_id,
-                "paymentStatus": "completed",
-                "orderStatus": "confirmed",
-            },
+            "data": {"orderId": order_doc.order_id, "paymentId": payload.razorpay_payment_id},
         },
     )
 
 
-@app.post("/api/contact")
+@app.post("/api/contact", status_code=201)
 async def contact(payload: ContactPayload, session: SessionDep) -> JSONResponse:
-    contact_row = Contact(
+    now = datetime.now(timezone.utc)
+    cat = payload.category or "general"
+    row = Contact(
         name=payload.name,
-        email=payload.email.lower(),
+        email=str(payload.email).lower(),
         phone=payload.phone,
         subject=payload.subject,
         message=payload.message,
-        category=payload.category or "general",
+        category=cat,
     )
-    session.add(contact_row)
+    session.add(row)
     await session.flush()
+    await session.refresh(row)
+
+    doc = {
+        "name": row.name,
+        "email": row.email,
+        "phone": row.phone,
+        "subject": row.subject,
+        "message": row.message,
+        "category": row.category,
+        "createdAt": row.created_at,
+        "updatedAt": row.updated_at,
+    }
+    return JSONResponse(
+        status_code=201,
+        content={
+            "success": True,
+            "data": serialize_document(doc),
+            "message": "Contact request submitted successfully",
+        },
+    )
+
+
+def _generate_return_id() -> str:
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    timestamp36 = base36(now_ms).upper()
+    random_part = base36(int(random.random() * 1e9)).upper()[:5]
+    return f"RET{timestamp36}{random_part}".upper()
+
+
+@app.post("/api/returns", status_code=201)
+async def create_return(payload: ReturnCreatePayload, session: SessionDep) -> JSONResponse:
+    now = datetime.now(timezone.utc)
+    return_id = _generate_return_id()
+
+    ur = await session.execute(select(User).where(User.email == payload.email.lower()))
+    user = ur.scalar_one_or_none()
+
+    orow = await session.execute(select(Order).where(Order.order_id == payload.orderId.upper()))
+    order_doc = orow.scalar_one_or_none()
+
+    hist = [{"status": "pending", "timestamp": now, "note": "Return requested"}]
+    row = ReturnRequest(
+        return_id=return_id,
+        order_pk=order_doc.id if order_doc else None,
+        customer_id=user.id if user else None,
+        items_json=_json_dumps(payload.items),
+        reason=payload.reason,
+        condition=payload.condition,
+        images_json=_json_dumps(payload.images),
+        notes=payload.notes,
+        status_history_json=_json_dumps(hist),
+    )
+    session.add(row)
+    await session.flush()
+    await session.refresh(row)
+
+    doc = {
+        "returnId": row.return_id,
+        "order": row.order_pk,
+        "customer": row.customer_id,
+        "items": json.loads(row.items_json or "[]"),
+        "reason": row.reason,
+        "condition": row.condition,
+        "images": json.loads(row.images_json or "[]"),
+        "notes": row.notes,
+        "status": row.status,
+        "refundMethod": row.refund_method,
+        "statusHistory": json.loads(row.status_history_json or "[]"),
+        "createdAt": row.created_at,
+        "updatedAt": row.updated_at,
+    }
+    return JSONResponse(
+        status_code=201,
+        content={"success": True, "data": serialize_document(doc), "message": "Return request submitted successfully"},
+    )
+
+
+@app.get("/api/admin/dashboard")
+async def admin_dashboard(request: Request, session: SessionDep) -> JSONResponse:
+    user_doc, err = await _get_authenticated_user(request, session)
+    if err:
+        return err
+    admin_err = _require_admin(user_doc)
+    if admin_err:
+        return admin_err
+
+    total_products = int((await session.scalar(select(func.count()).select_from(Product))) or 0)
+    total_orders = int((await session.scalar(select(func.count()).select_from(Order))) or 0)
+    total_customers = int((await session.scalar(select(func.count()).select_from(User).where(User.role == "customer"))) or 0)
+
+    total_revenue = float(
+        (await session.scalar(select(func.coalesce(func.sum(Order.total), 0)).where(Order.status == "delivered"))) or 0
+    )
+
+    recent_res = await session.execute(select(Order).order_by(desc(Order.created_at)).limit(10))
+    recent_rows = recent_res.scalars().all()
+    recent_orders = [order_orm_to_api_dict(o) for o in recent_rows]
+
+    del_ord_res = await session.execute(select(Order).where(Order.status == "delivered"))
+    delivered_orders = del_ord_res.scalars().all()
+
+    product_qty: Dict[int, int] = defaultdict(int)
+    for o in delivered_orders:
+        for item in json.loads(o.items_json or "[]"):
+            pid = item.get("product")
+            q = int(item.get("quantity") or 0)
+            iid = safe_int_id(pid) if not isinstance(pid, int) else pid
+            if iid is not None:
+                product_qty[iid] += q
+
+    top_ids = sorted(product_qty.keys(), key=lambda k: product_qty[k], reverse=True)[:5]
+    top_products_docs: List[Dict[str, Any]] = []
+    if top_ids:
+        pr = await session.execute(select(Product).where(Product.id.in_(top_ids)))
+        pmap = {p.id: p for p in pr.scalars().all()}
+        for tid in top_ids:
+            p = pmap.get(tid)
+            if p:
+                d = product_orm_to_api_dict(p)
+                top_products_docs.append({"_id": d["_id"], "name": d["name"], "price": d["price"], "images": d["images"]})
+
+    six_months_ago = datetime.now(timezone.utc) - timedelta(days=30 * 6)
+    monthly_by_key: Dict[Tuple[int, int], Dict[str, Any]] = defaultdict(lambda: {"totalSales": 0.0, "orderCount": 0})
+    mo_res = await session.execute(
+        select(Order).where(Order.status == "delivered", Order.created_at >= six_months_ago)
+    )
+    for o in mo_res.scalars().all():
+        ca = o.created_at
+        if ca.tzinfo is None:
+            ca = ca.replace(tzinfo=timezone.utc)
+        key = (ca.year, ca.month)
+        monthly_by_key[key]["totalSales"] += float(o.total)
+        monthly_by_key[key]["orderCount"] += 1
+
+    monthly_sales = [
+        {"_id": {"year": y, "month": m}, "totalSales": v["totalSales"], "orderCount": v["orderCount"]}
+        for (y, m), v in sorted(monthly_by_key.items())
+    ]
+
+    st_res = await session.execute(select(Order.status, func.count(Order.id)).group_by(Order.status))
+    status_breakdown = [{"_id": s, "count": c} for s, c in st_res.all()]
 
     return JSONResponse(
         status_code=200,
         content={
             "success": True,
-            "message": "Your message has been sent successfully. We will get back to you soon.",
+            "data": {
+                "overview": {
+                    "totalProducts": total_products,
+                    "totalOrders": total_orders,
+                    "totalCustomers": total_customers,
+                    "totalRevenue": total_revenue,
+                },
+                "recentOrders": serialize_document(recent_orders),
+                "topProducts": serialize_document(top_products_docs),
+                "monthlySales": serialize_document(monthly_sales),
+                "statusBreakdown": serialize_document(status_breakdown),
+            },
+        },
+    )
+
+
+
+
+@app.get("/api/admin/orders")
+async def admin_orders(request: Request, session: SessionDep) -> JSONResponse:
+    user_doc, err = await _get_authenticated_user(request, session)
+    if err:
+        return err
+    admin_err = _require_admin(user_doc)
+    if admin_err:
+        return admin_err
+
+    q = request.query_params
+    page = int(q.get("page") or 1)
+    limit = int(q.get("limit") or 10)
+    status = q.get("status")
+    search = q.get("search")
+
+    conds: List[Any] = []
+    if status:
+        conds.append(Order.status == status)
+    if search:
+        term = f"%{search}%"
+        conds.append(or_(Order.order_id.ilike(term), Order.shipping_json.ilike(term)))
+
+    where_expr = and_(*conds) if conds else True  # type: ignore[arg-type]
+    total = int((await session.execute(select(func.count()).select_from(Order).where(where_expr))).scalar_one() or 0)
+    skip = (page - 1) * limit
+
+    res = await session.execute(
+        select(Order).where(where_expr).order_by(desc(Order.created_at)).offset(skip).limit(limit)
+    )
+    rows = res.scalars().all()
+
+    customer_ids = list({o.customer_id for o in rows if o.customer_id is not None})
+    customers_by_id: Dict[str, Dict[str, Any]] = {}
+    if customer_ids:
+        cr = await session.execute(select(User).where(User.id.in_(customer_ids)))
+        for c in cr.scalars().all():
+            customers_by_id[str(c.id)] = public_user_profile(user_orm_to_api_dict(c))
+
+    out_docs: List[Dict[str, Any]] = []
+    for o in rows:
+        d = order_orm_to_api_dict(o)
+        cid = o.customer_id
+        if cid is not None and str(cid) in customers_by_id:
+            d["customer"] = customers_by_id[str(cid)]
+        out_docs.append(d)
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "success": True,
+            "data": {
+                "orders": serialize_document(out_docs),
+                "pagination": {
+                    "current": page,
+                    "pages": int(math.ceil(total / float(limit))) if limit else 1,
+                    "total": total,
+                },
+            },
         },
     )
 
 
 @app.get("/api/admin/products")
-async def admin_list_products(request: Request, session: SessionDep) -> JSONResponse:
+async def admin_products(request: Request, session: SessionDep) -> JSONResponse:
     user_doc, err = await _get_authenticated_user(request, session)
     if err:
         return err
@@ -1215,279 +1528,33 @@ async def admin_list_products(request: Request, session: SessionDep) -> JSONResp
         return admin_err
 
     q = request.query_params
-    page = int(q.get("page", 1))
-    limit = int(q.get("limit", 20))
-    search = q.get("search")
+    page = int(q.get("page") or 1)
+    limit = int(q.get("limit") or 10)
     category = q.get("category")
-    active = q.get("active")
+    search = q.get("search")
 
-    conds = []
-    if search:
-        term = f"%{search}%"
-        conds.append(
-            or_(
-                Product.name.ilike(term),
-                Product.description.ilike(term),
-                Product.category.ilike(term),
-            )
-        )
+    conds: List[Any] = []
     if category:
         conds.append(Product.category == category)
-    if active is not None:
-        conds.append(Product.active.is_(active.lower() == "true"))
-
-    result = await session.execute(
-        select(Product)
-        .where(and_(*conds))
-        .order_by(Product.created_at.desc())
-        .limit(limit)
-        .offset((page - 1) * limit)
-    )
-    products = result.scalars().all()
-
-    total_result = await session.execute(
-        select(func.count(Product.id)).where(and_(*conds))
-    )
-    total = total_result.scalar() or 0
-
-    return JSONResponse(
-        status_code=200,
-        content={
-            "success": True,
-            "data": {
-                "products": [product_orm_to_api_dict(p) for p in products],
-                "pagination": {
-                    "current": page,
-                    "pages": int(math.ceil(total / float(limit))) if limit else 1,
-                    "total": total,
-                },
-            },
-        },
-    )
-
-
-@app.post("/api/admin/products", status_code=201)
-async def admin_create_product(payload: AdminCreateProductPayload, request: Request, session: SessionDep) -> JSONResponse:
-    user_doc, err = await _get_authenticated_user(request, session)
-    if err:
-        return err
-    admin_err = _require_admin(user_doc)
-    if admin_err:
-        return admin_err
-
-    slug = await _unique_product_slug(session, payload.name)
-    product = Product(
-        name=payload.name,
-        slug=slug,
-        description=payload.description,
-        category=payload.category,
-        price=payload.price,
-        original_price=payload.originalPrice or payload.price,
-        images_json=json.dumps([payload.image] if payload.image else []),
-        sizes_json=json.dumps([]),
-        colors_json=json.dumps([]),
-        size_stock_json=json.dumps({}),
-        tags_json=json.dumps([]),
-        stock=payload.stock,
-        featured=payload.featured,
-        active=payload.active,
-        rating=0,
-        reviews=0,
-    )
-    session.add(product)
-    await session.flush()
-    await session.refresh(product)
-
-    return JSONResponse(
-        status_code=201,
-        content={
-            "success": True,
-            "message": "Product created successfully",
-            "data": product_orm_to_api_dict(product),
-        },
-    )
-
-
-@app.put("/api/admin/products/{product_id}")
-async def admin_update_product(
-    product_id: str, payload: AdminUpdateProductPayload, request: Request, session: SessionDep
-) -> JSONResponse:
-    user_doc, err = await _get_authenticated_user(request, session)
-    if err:
-        return err
-    admin_err = _require_admin(user_doc)
-    if admin_err:
-        return admin_err
-
-    pid = safe_int_id(product_id)
-    if pid is None:
-        return _json_error(400, message="Invalid product ID")
-
-    result = await session.execute(select(Product).where(Product.id == pid))
-    p = result.scalar_one_or_none()
-    if not p:
-        return _json_error(404, message="Product not found")
-
-    if payload.name is not None:
-        p.name = payload.name
-        p.slug = await _unique_product_slug(session, payload.name, exclude_product_id=pid)
-    if payload.description is not None:
-        p.description = payload.description
-    if payload.category is not None:
-        p.category = payload.category
-    if payload.price is not None:
-        p.price = payload.price
-    if payload.originalPrice is not None:
-        p.original_price = payload.originalPrice
-    if payload.image is not None:
-        p.images_json = json.dumps([payload.image])
-    if payload.stock is not None:
-        if payload.stock < 0:
-            return _json_error(400, message="Stock cannot be negative")
-        p.stock = payload.stock
-    if payload.featured is not None:
-        p.featured = payload.featured
-    if payload.active is not None:
-        p.active = payload.active
-    session.add(p)
-
-    return JSONResponse(
-        status_code=200,
-        content={"success": True, "data": product_orm_to_api_dict(p)},
-    )
-
-
-@app.delete("/api/admin/products/{product_id}")
-async def admin_delete_product(
-    product_id: str, request: Request, session: SessionDep
-) -> JSONResponse:
-    user_doc, err = await _get_authenticated_user(request, session)
-    if err:
-        return err
-    admin_err = _require_admin(user_doc)
-    if admin_err:
-        return admin_err
-
-    pid = safe_int_id(product_id)
-    if pid is None:
-        return _json_error(400, message="Invalid product ID")
-
-    result = await session.execute(select(Product).where(Product.id == pid))
-    p = result.scalar_one_or_none()
-    if not p:
-        return _json_error(404, message="Product not found")
-
-    await session.delete(p)
-
-    return JSONResponse(
-        status_code=200,
-        content={"success": True, "message": "Product deleted successfully"},
-    )
-
-
-@app.get("/api/admin/orders")
-async def admin_list_orders(request: Request, session: SessionDep) -> JSONResponse:
-    user_doc, err = await _get_authenticated_user(request, session)
-    if err:
-        return err
-    admin_err = _require_admin(user_doc)
-    if admin_err:
-        return admin_err
-
-    q = request.query_params
-    page = int(q.get("page", 1))
-    limit = int(q.get("limit", 20))
-    status = q.get("status")
-    search = q.get("search")
-
-    conds = []
-    if status:
-        conds.append(Order.status == status)
     if search:
         term = f"%{search}%"
-        conds.append(
-            or_(
-                Order.order_id.ilike(term),
-                Order.shipping_json.ilike(term),
-            )
-        )
+        conds.append(or_(Product.name.ilike(term), Product.description.ilike(term)))
 
-    result = await session.execute(
-        select(Order)
-        .where(and_(*conds))
-        .order_by(Order.created_at.desc())
-        .limit(limit)
-        .offset((page - 1) * limit)
-    )
-    orders = result.scalars().all()
+    where_expr = and_(*conds) if conds else True  # type: ignore[arg-type]
+    total = int((await session.execute(select(func.count()).select_from(Product).where(where_expr))).scalar_one() or 0)
+    skip = (page - 1) * limit
 
-    total_result = await session.execute(
-        select(func.count(Order.id)).where(and_(*conds))
+    res = await session.execute(
+        select(Product).where(where_expr).order_by(desc(Product.created_at)).offset(skip).limit(limit)
     )
-    total = total_result.scalar() or 0
+    docs = [product_orm_to_api_dict(p) for p in res.scalars().all()]
 
     return JSONResponse(
         status_code=200,
         content={
             "success": True,
             "data": {
-                "orders": [order_orm_to_api_dict(o) for o in orders],
-                "pagination": {
-                    "current": page,
-                    "pages": int(math.ceil(total / float(limit))) if limit else 1,
-                    "total": total,
-                },
-            },
-        },
-    )
-
-
-@app.get("/api/admin/customers")
-async def admin_customers(request: Request, session: SessionDep) -> JSONResponse:
-    user_doc, err = await _get_authenticated_user(request, session)
-    if err:
-        return err
-    admin_err = _require_admin(user_doc)
-    if admin_err:
-        return admin_err
-
-    q = request.query_params
-    page = int(q.get("page", 1))
-    limit = int(q.get("limit", 20))
-    search = q.get("search")
-
-    conds = []
-    if search:
-        term = f"%{search}%"
-        conds.append(
-            or_(
-                User.first_name.ilike(term),
-                User.last_name.ilike(term),
-                User.email.ilike(term),
-                User.phone.ilike(term),
-            )
-        )
-
-    result = await session.execute(
-        select(User)
-        .where(and_(*conds))
-        .order_by(User.created_at.desc())
-        .limit(limit)
-        .offset((page - 1) * limit)
-    )
-    users = result.scalars().all()
-
-    total_result = await session.execute(
-        select(func.count(User.id)).where(and_(*conds))
-    )
-    total = total_result.scalar() or 0
-
-    return JSONResponse(
-        status_code=200,
-        content={
-            "success": True,
-            "data": {
-                "customers": [user_orm_to_api_dict(u) for u in users],
+                "products": serialize_document(docs),
                 "pagination": {
                     "current": page,
                     "pages": int(math.ceil(total / float(limit))) if limit else 1,
@@ -1509,28 +1576,139 @@ async def admin_upload_image(request: Request, session: SessionDep, image: Uploa
 
     ext = _safe_upload_extension(image.filename or "", image.content_type or "")
     if not ext:
-        return _json_error(400, message="Invalid image format. Only JPG, PNG, and WebP are allowed.")
+        return _json_error(400, message="Only JPG, PNG, or WEBP images are allowed")
 
-    filename = f"{secrets.token_urlsafe(16)}{ext}"
+    data = await image.read()
+    max_size = int(settings.get("max_file_size") or (5 * 1024 * 1024))
+    if not data:
+        return _json_error(400, message="Image file is empty")
+    if len(data) > max_size:
+        return _json_error(400, message=f"Image too large. Max size is {max_size // (1024 * 1024)}MB")
+
+    filename = f"product-{secrets.token_hex(12)}{ext}"
     file_path = Path(UPLOAD_DIR) / filename
-
-    try:
-        with open(file_path, "wb") as f:
-            content = await image.read()
-            f.write(content)
-    except Exception as exc:
-        logging.getLogger("app").exception("Failed to save uploaded image")
-        return _json_error(500, message="Failed to save image")
-
-    image_url = f"/uploads/{filename}"
+    file_path.write_bytes(data)
     return JSONResponse(
-        status_code=200,
-        content={"success": True, "data": {"url": image_url}},
+        status_code=201,
+        content={"success": True, "data": {"url": f"/uploads/{filename}"}, "message": "Image uploaded successfully"},
     )
 
 
-@app.get("/api/admin/contacts")
-async def admin_contacts(request: Request, session: SessionDep) -> JSONResponse:
+@app.post("/api/admin/products", status_code=201)
+async def admin_create_product(
+    payload: AdminCreateProductPayload,
+    request: Request,
+    session: SessionDep,
+) -> JSONResponse:
+    user_doc, err = await _get_authenticated_user(request, session)
+    if err:
+        return err
+    admin_err = _require_admin(user_doc)
+    if admin_err:
+        return admin_err
+
+    if payload.price < 0:
+        return _json_error(400, message="Price cannot be negative")
+    if payload.stock < 0:
+        return _json_error(400, message="Stock cannot be negative")
+    if payload.originalPrice is not None and payload.originalPrice < 0:
+        return _json_error(400, message="Original price cannot be negative")
+
+    now = datetime.now(timezone.utc)
+    slug = await _unique_product_slug(session, payload.name)
+    image = payload.image.strip() if payload.image else "/images/placeholder-product.jpg"
+
+    p = Product(
+        name=payload.name.strip(),
+        slug=slug,
+        description=payload.description.strip(),
+        short_description=(payload.description.strip()[:140] if payload.description else None),
+        category=payload.category.strip(),
+        price=payload.price,
+        original_price=payload.originalPrice,
+        images_json=_json_dumps([image]),
+        stock=payload.stock,
+        featured=payload.featured,
+        active=payload.active,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(p)
+    await session.flush()
+    await session.refresh(p)
+
+    return JSONResponse(
+        status_code=201,
+        content={"success": True, "data": serialize_document(product_orm_to_api_dict(p))},
+    )
+
+
+@app.put("/api/admin/products/{product_id}")
+async def admin_update_product(
+    product_id: str,
+    payload: AdminUpdateProductPayload,
+    request: Request,
+    session: SessionDep,
+) -> JSONResponse:
+    user_doc, err = await _get_authenticated_user(request, session)
+    if err:
+        return err
+    admin_err = _require_admin(user_doc)
+    if admin_err:
+        return admin_err
+
+    pid = safe_int_id(product_id)
+    if pid is None:
+        return _json_error(404, error="Product not found")
+
+    result = await session.execute(select(Product).where(Product.id == pid))
+    p = result.scalar_one_or_none()
+    if not p:
+        return _json_error(404, error="Product not found")
+
+    if payload.name is not None:
+        name = payload.name.strip()
+        if not name:
+            return _json_error(400, message="Name cannot be empty")
+        p.name = name
+        p.slug = await _unique_product_slug(session, name, exclude_product_id=p.id)
+    if payload.description is not None:
+        p.description = payload.description.strip()
+        p.short_description = p.description[:140] if p.description else None
+    if payload.category is not None:
+        category = payload.category.strip()
+        if not category:
+            return _json_error(400, message="Category cannot be empty")
+        p.category = category
+    if payload.price is not None:
+        if payload.price < 0:
+            return _json_error(400, message="Price cannot be negative")
+        p.price = payload.price
+    if payload.originalPrice is not None:
+        if payload.originalPrice < 0:
+            return _json_error(400, message="Original price cannot be negative")
+        p.original_price = payload.originalPrice
+    if payload.image is not None:
+        image = payload.image.strip()
+        p.images_json = _json_dumps([image] if image else [])
+    if payload.featured is not None:
+        p.featured = payload.featured
+    if payload.active is not None:
+        p.active = payload.active
+    if payload.stock is not None:
+        if payload.stock < 0:
+            return _json_error(400, message="Stock cannot be negative")
+        p.stock = payload.stock
+    session.add(p)
+
+    return JSONResponse(
+        status_code=200,
+        content={"success": True, "data": serialize_document(product_orm_to_api_dict(p))},
+    )
+
+
+@app.get("/api/admin/customers")
+async def admin_customers(request: Request, session: SessionDep) -> JSONResponse:
     user_doc, err = await _get_authenticated_user(request, session)
     if err:
         return err
@@ -1539,50 +1717,80 @@ async def admin_contacts(request: Request, session: SessionDep) -> JSONResponse:
         return admin_err
 
     q = request.query_params
-    page = int(q.get("page", 1))
-    limit = int(q.get("limit", 20))
-    category = q.get("category")
+    page = int(q.get("page") or 1)
+    limit = int(q.get("limit") or 10)
+    search = q.get("search")
 
-    conds = []
-    if category:
-        conds.append(Contact.category == category)
+    conds: List[Any] = [User.role == "customer"]
+    if search:
+        term = f"%{search}%"
+        conds.append(
+            or_(
+                User.first_name.ilike(term),
+                User.last_name.ilike(term),
+                User.email.ilike(term),
+                User.phone.ilike(term),
+            )
+        )
 
-    result = await session.execute(
-        select(Contact)
-        .where(and_(*conds))
-        .order_by(Contact.created_at.desc())
-        .limit(limit)
-        .offset((page - 1) * limit)
-    )
-    contacts = result.scalars().all()
+    where_expr = and_(*conds)
+    total = int((await session.execute(select(func.count()).select_from(User).where(where_expr))).scalar_one() or 0)
+    skip = (page - 1) * limit
 
-    total_result = await session.execute(
-        select(func.count(Contact.id)).where(and_(*conds))
-    )
-    total = total_result.scalar() or 0
+    res = await session.execute(select(User).where(where_expr).order_by(desc(User.created_at)).offset(skip).limit(limit))
+    docs = [public_user_profile(user_orm_to_api_dict(u)) for u in res.scalars().all()]
 
     return JSONResponse(
         status_code=200,
         content={
             "success": True,
             "data": {
-                "contacts": [
-                    {
-                        "_id": c.id,
-                        "name": c.name,
-                        "email": c.email,
-                        "phone": c.phone,
-                        "subject": c.subject,
-                        "message": c.message,
-                        "category": c.category,
-                        "createdAt": c.created_at,
-                    }
-                    for c in contacts
-                ],
+                "customers": serialize_document(docs),
                 "pagination": {
                     "current": page,
                     "pages": int(math.ceil(total / float(limit))) if limit else 1,
                     "total": total,
+                },
+            },
+        },
+    )
+
+
+@app.get("/api/orders/admin/all")
+async def orders_admin_all(request: Request, session: SessionDep) -> JSONResponse:
+    q = request.query_params
+    page = int(q.get("page") or 1)
+    limit = int(q.get("limit") or 10)
+    status = q.get("status")
+    search = q.get("search")
+
+    conds: List[Any] = []
+    if status:
+        conds.append(Order.status == status)
+    if search:
+        term = f"%{search}%"
+        conds.append(or_(Order.order_id.ilike(term), Order.shipping_json.ilike(term)))
+
+    where_expr = and_(*conds) if conds else True  # type: ignore[arg-type]
+    total = int((await session.execute(select(func.count()).select_from(Order).where(where_expr))).scalar_one() or 0)
+    skip = (page - 1) * limit
+
+    res = await session.execute(
+        select(Order).where(where_expr).order_by(desc(Order.created_at)).offset(skip).limit(limit)
+    )
+    docs = [order_orm_to_api_dict(o) for o in res.scalars().all()]
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "success": True,
+            "data": {
+                "orders": serialize_document(docs),
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total": total,
+                    "pages": int(math.ceil(total / float(limit))) if limit else 1,
                 },
             },
         },
@@ -1600,42 +1808,34 @@ if _FRONTEND_DIST.is_dir():
         app.mount("/images", StaticFiles(directory=str(_images_dir)), name="spa_images")
 
     _logo_png = _FRONTEND_DIST / "images" / "logo.png"
-    if _logo_png.is_file():
-        @app.get("/logo.png", include_in_schema=False)
-        async def logo():
-            return FileResponse(_logo_png)
 
-    _index_html = _FRONTEND_DIST / "index.html"
-    if _index_html.is_file():
-        @app.get("/", include_in_schema=False)
-        @app.get("/admin", include_in_schema=False)
-        @app.get("/admin/{path:path}", include_in_schema=False)
-        @app.get("/shop", include_in_schema=False)
-        @app.get("/shop/{path:path}", include_in_schema=False)
-        @app.get("/t-shirts", include_in_schema=False)
-        @app.get("/t-shirts/{path:path}", include_in_schema=False)
-        @app.get("/casual-wears", include_in_schema=False)
-        @app.get("/casual-wears/{path:path}", include_in_schema=False)
-        @app.get("/cart", include_in_schema=False)
-        @app.get("/checkout", include_in_schema=False)
-        @app.get("/payment", include_in_schema=False)
-        @app.get("/profile", include_in_schema=False)
-        @app.get("/contact", include_in_schema=False)
-        @app.get("/returns", include_in_schema=False)
-        @app.get("/privacy", include_in_schema=False)
-        @app.get("/terms", include_in_schema=False)
-        @app.get("/refund", include_in_schema=False)
-        @app.get("/shipping", include_in_schema=False)
-        @app.get("/about", include_in_schema=False)
-        @app.get("/faq", include_in_schema=False)
-        @app.get("/order-success", include_in_schema=False)
-        @app.get("/order-failed", include_in_schema=False)
-        @app.get("/{path:path}", include_in_schema=False)
-        async def spa_fallback():
-            return FileResponse(_index_html)
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def _favicon() -> FileResponse:
+        if _logo_png.is_file():
+            return FileResponse(_logo_png, media_type="image/png")
+        raise HTTPException(status_code=404)
+
+    @app.get("/vite.svg", include_in_schema=False)
+    async def _vite_icon() -> FileResponse:
+        if _logo_png.is_file():
+            return FileResponse(_logo_png, media_type="image/png")
+        raise HTTPException(status_code=404)
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def _spa_catch_all(full_path: str) -> FileResponse:
+        if full_path.startswith("api"):
+            raise HTTPException(status_code=404)
+        index = _FRONTEND_DIST / "index.html"
+        if not index.is_file():
+            raise HTTPException(status_code=404)
+        return FileResponse(index)
 
 
 if __name__ == "__main__":
+    from .frontend_build import build_frontend_if_needed
+
+    build_frontend_if_needed()
+
     import uvicorn
 
     _port = int(os.getenv("PORT", str(settings.get("port", 5000))))
@@ -1646,4 +1846,11 @@ if __name__ == "__main__":
         log_level="debug",
         access_log=True,
         use_colors=True,
+_frontend_dist = _BACKEND_ROOT / "frontend_dist"
+if _frontend_dist.is_dir():
+    app.mount(
+        "/",
+        StaticFiles(directory=str(_frontend_dist), html=True),
+        name="spa",
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
     )

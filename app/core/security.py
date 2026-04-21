@@ -11,25 +11,11 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
-<<<<<<< HEAD
-    # Temporary fix: use simple SHA-256 hashing for testing
-    # TODO: Revert to bcrypt once compatibility issues are resolved
-    import hashlib
-    return hashlib.sha256(password.encode('utf-8')).hexdigest()
-
-
-def verify_password(password: str, hashed_password: str) -> bool:
-    # Temporary fix: use simple SHA-256 verification for testing
-    # TODO: Revert to bcrypt once compatibility issues are resolved
-    import hashlib
-    return hashlib.sha256(password.encode('utf-8')).hexdigest() == hashed_password
-=======
     return pwd_context.hash(password)
 
 
 def verify_password(password: str, hashed_password: str) -> bool:
     return pwd_context.verify(password, hashed_password)
->>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 
 
 def create_access_token(*, user_id: str, role: str, jwt_secret: str, expires_days: int = 7) -> str:

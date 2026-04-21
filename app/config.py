@@ -21,7 +21,6 @@ def get_settings():
         "sqlite_url": sqlite_url,
         "jwt_secret": os.getenv("JWT_SECRET", "your-secret-key"),
         "frontend_url": os.getenv("FRONTEND_URL", "http://localhost:5173"),
-<<<<<<< HEAD
         "smtp_host": os.getenv("SMTP_HOST", "").strip(),
         "smtp_port": int(os.getenv("SMTP_PORT", "587")),
         "smtp_user": os.getenv("SMTP_USER", "").strip(),
@@ -30,17 +29,12 @@ def get_settings():
         "smtp_from_name": os.getenv("SMTP_FROM_NAME", "Tamil Nadu Products").strip(),
         "smtp_use_tls": os.getenv("SMTP_USE_TLS", "true").lower() in ("1", "true", "yes"),
         "smtp_use_ssl": os.getenv("SMTP_USE_SSL", "false").lower() in ("1", "true", "yes"),
-=======
->>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
         "port": int(os.getenv("PORT", "5000")),
         "env": os.getenv("NODE_ENV", os.getenv("ENV", "development")),
         "razorpay_key_id": os.getenv("RAZORPAY_KEY_ID"),
         "razorpay_key_secret": os.getenv("RAZORPAY_KEY_SECRET"),
         "max_file_size": int(os.getenv("MAX_FILE_SIZE", str(5 * 1024 * 1024))),
         "upload_dir": os.getenv("UPLOAD_PATH", "uploads"),
-<<<<<<< HEAD
         "log_level": os.getenv("LOG_LEVEL", "DEBUG"),
         "sql_echo": os.getenv("SQL_ECHO", "").lower() in ("1", "true", "yes"),
-=======
->>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
     }
