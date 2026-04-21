@@ -1,27 +1,44 @@
 import json
+<<<<<<< HEAD
 import logging
+=======
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 import math
 import os
 import random
 import secrets
+<<<<<<< HEAD
 import smtplib
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
+=======
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Optional, Tuple
 
 import jwt as pyjwt
+<<<<<<< HEAD
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+=======
+from fastapi import Depends, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import Select, and_, asc, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import get_settings
+<<<<<<< HEAD
 from .logging_config import RequestResponseLoggingMiddleware, configure_logging
+=======
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 from .database import configure_engine, get_session, init_db
 from .db.models import Contact, Order, Product, ReturnRequest, User
 from .core.security import (
@@ -38,10 +55,15 @@ from .core.security import (
 )
 
 settings = get_settings()
+<<<<<<< HEAD
 configure_logging(settings)
 
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 _FRONTEND_DIST = _BACKEND_ROOT / "frontend_dist"
+=======
+
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 UPLOAD_DIR = str(_BACKEND_ROOT / settings["upload_dir"])
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -64,6 +86,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+<<<<<<< HEAD
 app.add_middleware(RequestResponseLoggingMiddleware)
 
 
@@ -83,15 +106,21 @@ async def _spa_fallback_on_404(request: Request, call_next):
         return response
     return FileResponse(index)
 
+=======
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
 @app.on_event("startup")
 async def _startup() -> None:
+<<<<<<< HEAD
     logging.getLogger("app").info("Starting up; database init…")
     await init_db()
     logging.getLogger("app").info("Database ready.")
+=======
+    await init_db()
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 
 
 def _json_dumps(data: Any) -> str:
@@ -250,6 +279,7 @@ class RegisterPayload(BaseModel):
 
 
 class LoginPayload(BaseModel):
+<<<<<<< HEAD
     identifier: Optional[str] = None
     email: Optional[EmailStr] = None
     password: str
@@ -259,6 +289,10 @@ class VerifyOtpPayload(BaseModel):
     email: EmailStr
     otp: str = Field(min_length=4, max_length=10)
     purpose: str = Field(pattern="^(register|login)$")
+=======
+    email: EmailStr
+    password: str
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 
 
 class ProfilePayload(BaseModel):
@@ -283,6 +317,7 @@ class UpdateOrderStatusPayload(BaseModel):
     note: Optional[str] = None
 
 
+<<<<<<< HEAD
 class AdminUpdateProductPayload(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
@@ -307,6 +342,8 @@ class AdminCreateProductPayload(BaseModel):
     active: bool = True
 
 
+=======
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 class CreatePaymentOrderPayload(BaseModel):
     amount: int
     orderId: str
@@ -373,6 +410,7 @@ def _product_list_filters(
     return conds
 
 
+<<<<<<< HEAD
 def _slugify(text: str) -> str:
     slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in text).strip("-")
     while "--" in slug:
@@ -488,6 +526,8 @@ async def _unique_product_slug(session: AsyncSession, base_name: str, *, exclude
         suffix += 1
 
 
+=======
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 @app.get("/api/health")
 async def health() -> JSONResponse:
     return JSONResponse(
@@ -511,6 +551,7 @@ async def register(payload: RegisterPayload, session: SessionDep) -> JSONRespons
     if (await session.execute(select(User).where(User.phone == phone))).scalar_one_or_none():
         return _json_error(400, message="Phone number already registered")
 
+<<<<<<< HEAD
     otp = _store_otp(
         email,
         "register",
@@ -528,19 +569,46 @@ async def register(payload: RegisterPayload, session: SessionDep) -> JSONRespons
     if not sent:
         # Log the error but don't fail registration for development
         logging.getLogger("app").warning("OTP email not sent: %s", send_err or "Unknown error")
+=======
+    user = User(
+        first_name=payload.firstName,
+        last_name=payload.lastName,
+        email=email,
+        phone=phone,
+        password_hash=hash_password(payload.password),
+        role="customer",
+    )
+    session.add(user)
+    await session.flush()
+    await session.refresh(user)
+
+    ud = user_orm_to_api_dict(user)
+    token = create_access_token(
+        user_id=str(user.id),
+        role=user.role,
+        jwt_secret=settings["jwt_secret"],
+        expires_days=7,
+    )
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 
     return JSONResponse(
         status_code=201,
         content={
             "success": True,
+<<<<<<< HEAD
             "message": "OTP sent. Verify OTP to complete registration.",
             "data": {"email": email, "purpose": "register", "otp": _otp_debug_value(otp)},
+=======
+            "message": "Registration successful",
+            "data": {"user": public_user_profile(ud), "token": token, "role": user.role},
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
         },
     )
 
 
 @app.post("/api/auth/login")
 async def login(payload: LoginPayload, session: SessionDep) -> JSONResponse:
+<<<<<<< HEAD
     raw_identifier = (payload.identifier or (str(payload.email).lower() if payload.email else "")).strip()
     if not raw_identifier:
         return _json_error(400, message="Email or phone is required")
@@ -549,6 +617,10 @@ async def login(payload: LoginPayload, session: SessionDep) -> JSONResponse:
     result = await session.execute(
         select(User).where(or_(User.email == identifier, User.phone == raw_identifier))
     )
+=======
+    email = payload.email.lower()
+    result = await session.execute(select(User).where(User.email == email))
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
     user = result.scalar_one_or_none()
     if not user:
         return _json_error(401, message="Invalid email or password")
@@ -559,6 +631,7 @@ async def login(payload: LoginPayload, session: SessionDep) -> JSONResponse:
     if not user.active:
         return _json_error(401, message="Account is deactivated")
 
+<<<<<<< HEAD
     otp = _store_otp(
         user.email,
         "login",
@@ -643,6 +716,12 @@ async def verify_otp(payload: VerifyOtpPayload, session: SessionDep) -> JSONResp
     user.email_verified = True
     session.add(user)
     _otp_store.pop(email, None)
+=======
+    now = datetime.now(timezone.utc)
+    user.last_login = now
+    user.login_count = user.login_count + 1
+    session.add(user)
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 
     ud = user_orm_to_api_dict(user)
     token = create_access_token(
@@ -651,11 +730,19 @@ async def verify_otp(payload: VerifyOtpPayload, session: SessionDep) -> JSONResp
         jwt_secret=settings["jwt_secret"],
         expires_days=7,
     )
+<<<<<<< HEAD
+=======
+
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
     return JSONResponse(
         status_code=200,
         content={
             "success": True,
+<<<<<<< HEAD
             "message": "Login verified successfully",
+=======
+            "message": "Login successful",
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
             "data": {
                 "user": public_user_profile(ud),
                 "token": token,
@@ -667,7 +754,11 @@ async def verify_otp(payload: VerifyOtpPayload, session: SessionDep) -> JSONResp
 
 @app.post("/api/auth/admin/login")
 async def admin_login(payload: LoginPayload, session: SessionDep) -> JSONResponse:
+<<<<<<< HEAD
     ADMIN_EMAIL = "sridhargtn@gmail.com"
+=======
+    ADMIN_EMAIL = "admin@tamilnaduproducts.com"
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 
     if payload.email.lower() != ADMIN_EMAIL:
         return _json_error(403, message="Access denied. Only admin can access this portal.")
@@ -889,6 +980,7 @@ def base36(num: int) -> str:
     return out
 
 
+<<<<<<< HEAD
 async def _validate_order_items_stock(session: AsyncSession, products_payload: List[Dict[str, Any]]) -> Optional[JSONResponse]:
     """Ensure each line item has enough inventory before creating an order."""
     for p in products_payload:
@@ -956,6 +1048,17 @@ async def create_order(payload: CreateOrderPayload, request: Request, session: S
     stock_err = await _validate_order_items_stock(session, payload.products)
     if stock_err:
         return stock_err
+=======
+@app.post("/api/orders/create-order", status_code=201)
+async def create_guest_order(payload: CreateOrderPayload, session: SessionDep) -> JSONResponse:
+    now = datetime.now(timezone.utc)
+
+    customer_id: Optional[int] = None
+    ur = await session.execute(select(User).where(User.email == payload.customerEmail.lower()))
+    eu = ur.scalar_one_or_none()
+    if eu:
+        customer_id = eu.id
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 
     order_id = _generate_order_id()
 
@@ -977,7 +1080,11 @@ async def create_order(payload: CreateOrderPayload, request: Request, session: S
     shipping_address: Dict[str, Any] = {
         "fullName": payload.customerName,
         "phone": payload.customerPhone,
+<<<<<<< HEAD
         "email": account_email,
+=======
+        "email": payload.customerEmail.lower(),
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
         "country": "India",
         **payload.shippingAddress,
     }
@@ -985,13 +1092,21 @@ async def create_order(payload: CreateOrderPayload, request: Request, session: S
     hist = [{"status": "ordered", "timestamp": now, "note": "Order placed successfully"}]
     order_row = Order(
         order_id=order_id,
+<<<<<<< HEAD
         customer_id=uid,
+=======
+        customer_id=customer_id,
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
         items_json=_json_dumps(items),
         shipping_json=_json_dumps(shipping_address),
         subtotal=payload.totalAmount,
         total=payload.totalAmount,
         status="ordered",
+<<<<<<< HEAD
         payment_method="razorpay",
+=======
+        payment_method="cod",
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
         payment_status="pending",
         status_history_json=_json_dumps(hist),
     )
@@ -1003,6 +1118,7 @@ async def create_order(payload: CreateOrderPayload, request: Request, session: S
         content={
             "success": True,
             "message": "Order created successfully",
+<<<<<<< HEAD
             "data": serialize_document(
                 {
                     "orderId": order_id,
@@ -1011,6 +1127,14 @@ async def create_order(payload: CreateOrderPayload, request: Request, session: S
                     "createdAt": now,
                 }
             ),
+=======
+            "data": {
+                "orderId": order_id,
+                "status": "ordered",
+                "total": payload.totalAmount,
+                "createdAt": now,
+            },
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
         },
     )
 
@@ -1054,6 +1178,7 @@ async def status_options() -> JSONResponse:
 
 
 @app.put("/api/orders/update-order/{order_id}")
+<<<<<<< HEAD
 async def update_order_status(
     order_id: str, payload: UpdateOrderStatusPayload, request: Request, session: SessionDep
 ) -> JSONResponse:
@@ -1064,6 +1189,9 @@ async def update_order_status(
     if admin_err:
         return admin_err
 
+=======
+async def update_order_status(order_id: str, payload: UpdateOrderStatusPayload, session: SessionDep) -> JSONResponse:
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
     now = datetime.now(timezone.utc)
 
     if not payload.status:
@@ -1127,6 +1255,7 @@ async def update_order_status(
     )
 
 
+<<<<<<< HEAD
 @app.get("/api/payments/config")
 async def payments_config() -> JSONResponse:
     key_id = settings.get("razorpay_key_id") or ""
@@ -1142,6 +1271,10 @@ async def payments_create_order(
         return auth_err
     uid = int(user_doc["_id"])
 
+=======
+@app.post("/api/payments/create-order")
+async def payments_create_order(payload: CreatePaymentOrderPayload, session: SessionDep) -> JSONResponse:
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
     razor_key_id = settings.get("razorpay_key_id")
     razor_key_secret = settings.get("razorpay_key_secret")
     if not razor_key_id or not razor_key_secret:
@@ -1151,8 +1284,11 @@ async def payments_create_order(
     order_doc = result.scalar_one_or_none()
     if not order_doc:
         return _json_error(404, error="Order not found")
+<<<<<<< HEAD
     if order_doc.customer_id is None or order_doc.customer_id != uid:
         return _json_error(403, error="You can only pay for orders placed on your account.")
+=======
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 
     from razorpay import Client as RazorpayClient
 
@@ -1170,12 +1306,16 @@ async def payments_create_order(
 
 
 @app.post("/api/payments/verify")
+<<<<<<< HEAD
 async def payments_verify(payload: VerifyPaymentPayload, request: Request, session: SessionDep) -> JSONResponse:
     user_doc, auth_err = await _get_authenticated_user(request, session)
     if auth_err:
         return auth_err
     uid = int(user_doc["_id"])
 
+=======
+async def payments_verify(payload: VerifyPaymentPayload, session: SessionDep) -> JSONResponse:
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
     razor_key_secret = settings.get("razorpay_key_secret")
     if not razor_key_secret:
         return _json_error(500, error="Payment service not configured")
@@ -1184,8 +1324,11 @@ async def payments_verify(payload: VerifyPaymentPayload, request: Request, sessi
     order_doc = result.scalar_one_or_none()
     if not order_doc:
         return _json_error(404, error="Order not found")
+<<<<<<< HEAD
     if order_doc.customer_id is None or order_doc.customer_id != uid:
         return _json_error(403, error="You can only verify payment for your own orders.")
+=======
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 
     is_valid = razorpay_signature_matches(
         razor_key_secret,
@@ -1196,6 +1339,7 @@ async def payments_verify(payload: VerifyPaymentPayload, request: Request, sessi
     if not is_valid:
         return _json_error(400, error="Invalid payment signature")
 
+<<<<<<< HEAD
     if (order_doc.payment_status or "") == "completed":
         return _json_error(400, error="Payment already verified for this order")
 
@@ -1204,6 +1348,8 @@ async def payments_verify(payload: VerifyPaymentPayload, request: Request, sessi
     if stock_err:
         return stock_err
 
+=======
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
     order_doc.payment_id = payload.razorpay_payment_id
     order_doc.razorpay_payment_id = payload.razorpay_payment_id
     order_doc.razorpay_signature = payload.razorpay_signature
@@ -1508,6 +1654,7 @@ async def admin_products(request: Request, session: SessionDep) -> JSONResponse:
     )
 
 
+<<<<<<< HEAD
 @app.post("/api/admin/upload-image")
 async def admin_upload_image(request: Request, session: SessionDep, image: UploadFile = File(...)) -> JSONResponse:
     user_doc, err = await _get_authenticated_user(request, session)
@@ -1650,6 +1797,8 @@ async def admin_update_product(
     )
 
 
+=======
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
 @app.get("/api/admin/customers")
 async def admin_customers(request: Request, session: SessionDep) -> JSONResponse:
     user_doc, err = await _get_authenticated_user(request, session)
@@ -1741,6 +1890,7 @@ async def orders_admin_all(request: Request, session: SessionDep) -> JSONRespons
 
 
 # --- Production UI (Vite build output: frontend `npm run build` → backend/frontend_dist) ---
+<<<<<<< HEAD
 # Assets are mounted explicitly; HTML routes use _spa_fallback_on_404 middleware + catch-all below.
 if _FRONTEND_DIST.is_dir():
     _assets_dir = _FRONTEND_DIST / "assets"
@@ -1789,4 +1939,12 @@ if __name__ == "__main__":
         log_level="debug",
         access_log=True,
         use_colors=True,
+=======
+_frontend_dist = _BACKEND_ROOT / "frontend_dist"
+if _frontend_dist.is_dir():
+    app.mount(
+        "/",
+        StaticFiles(directory=str(_frontend_dist), html=True),
+        name="spa",
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
     )

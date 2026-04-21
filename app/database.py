@@ -18,8 +18,12 @@ def get_sqlite_url(settings: dict) -> str:
 def configure_engine(settings: dict) -> None:
     global _engine, _async_session_maker
     url = settings["sqlite_url"] or get_sqlite_url(settings)
+<<<<<<< HEAD
     echo = bool(settings.get("sql_echo", False))
     _engine = create_async_engine(url, echo=echo)
+=======
+    _engine = create_async_engine(url, echo=False)
+>>>>>>> ff6434899968bd8bebc10ff73861c9e673e1f47b
     _async_session_maker = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
 
 
