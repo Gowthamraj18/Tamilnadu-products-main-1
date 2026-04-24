@@ -49,6 +49,11 @@ configure_engine(settings)
 
 app = FastAPI(title="Tamil Nadu Products API (FastAPI)")
 
+@app.get("/", include_in_schema=False)
+async def root():
+    logging.getLogger("app").info("Root route enabled - backend mode")
+    return {"message": "API is running 🚀"}
+
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 allowed_origins = [
@@ -492,11 +497,6 @@ async def _unique_product_slug(session: AsyncSession, base_name: str, *, exclude
             return slug
         slug = f"{base_slug}-{suffix}"
         suffix += 1
-
-
-@app.get("/")
-async def root():
-    return {"message": "API is running 🚀"}
 
 
 @app.get("/api/health")
