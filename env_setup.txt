@@ -1,0 +1,37 @@
+# Copy this content to your .env file
+# Place it in the root of your project (same folder as app/ and frontend/)
+
+# Database
+SQLITE_PATH=./tamilnadu_products.db
+
+# JWT Secret (change in production)
+JWT_SECRET=your-secret-key-change-this-in-production
+
+# Frontend URL
+FRONTEND_URL=https://tamilnaduproducts.com
+
+# Razorpay LIVE Credentials
+RAZORPAY_KEY_ID=rzp_live_SdcFjLjrfMbp6H
+RAZORPAY_KEY_SECRET=0wepSBS2EO0zdDJ3GljLMXXJ
+
+# SMTP for OTP (optional - configure if needed)
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_FROM_EMAIL=
+SMTP_FROM_NAME=Tamil Nadu Products
+SMTP_USE_TLS=true
+SMTP_USE_SSL=false
+
+# Railway/Hosting
+PORT=8000
+ENV=production
+
+# Upload settings
+UPLOAD_PATH=uploads
+MAX_FILE_SIZE=5242880
+
+# Logging
+LOG_LEVEL=INFO
+SQL_ECHO=false
