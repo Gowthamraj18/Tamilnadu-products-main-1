@@ -49,10 +49,10 @@ configure_engine(settings)
 
 app = FastAPI(title="Tamil Nadu Products API (FastAPI)")
 
-@app.get("/", include_in_schema=False)
-async def root():
-    logging.getLogger("app").info("Root route enabled - backend mode")
-    return {"message": "API is running 🚀"}
+# Frontend static files
+frontend_path = os.path.join(os.path.dirname(__file__), "frontend_dist")
+if os.path.exists(frontend_path):
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_path, "assets")), name="assets")
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
@@ -1644,6 +1644,8 @@ if _FRONTEND_DIST.is_dir():
         @app.get("/{path:path}", include_in_schema=False)
         async def spa_fallback():
             return FileResponse(_index_html)
+
+
 
 
 if __name__ == "__main__":
