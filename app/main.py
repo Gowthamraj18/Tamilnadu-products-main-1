@@ -41,7 +41,7 @@ settings = get_settings()
 configure_logging(settings)
 
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
-_FRONTEND_DIST = _BACKEND_ROOT / "frontend_dist"
+_FRONTEND_DIST = _BACKEND_ROOT / "app" / "frontend_dist"
 UPLOAD_DIR = str(_BACKEND_ROOT / settings["upload_dir"])
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
