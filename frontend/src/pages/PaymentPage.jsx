@@ -109,18 +109,9 @@ export default function PaymentPage() {
   const pay = async () => {
     if (!loaded || !razorpayKeyId) return
     setErr('')
-    if (!token()) {
-      setErr('Please sign in on the shop first, then try again.')
-      return
-    }
     const amountPaise = Math.round(Number(loaded.total) * 100)
     if (amountPaise < 100) {
       setErr('Invalid order amount.')
-      return
-    }
-    const upiErr = validateUpiVpa(upiId)
-    if (upiErr) {
-      setErr(upiErr)
       return
     }
     setPaying(true)
@@ -130,17 +121,12 @@ export default function PaymentPage() {
         setPaying(false)
         return
       }
-      const r = await fetch('/api/payments/create-order', {
+      const r = await fetch('/create-order', {
         method: 'POST',
-        headers: authHeaders(),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount: amountPaise, orderId: loaded.orderId }),
       })
       const j = await r.json()
-      if (r.status === 401) {
-        setErr('Session expired or not signed in. Open the shop and sign in, then try again.')
-        setPaying(false)
-        return
-      }
       if (!r.ok || !j.success) {
         setErr(j.error || j.message || 'Could not start payment.')
         setPaying(false)
@@ -151,14 +137,14 @@ export default function PaymentPage() {
         key: razorpayKeyId,
         amount: amountPaise,
         currency: 'INR',
-        name: 'Tamil Nadu Products',
-        description: `Order ${loaded.orderId}`,
+        name: 'AKL EXIM / Tamil Nadu Products',
+        description: 'Product Checkout Payment',
         order_id: rzOrder.id,
         handler: async (response) => {
           try {
-            const v = await fetch('/api/payments/verify', {
+            const v = await fetch('/verify-payment', {
               method: 'POST',
-              headers: authHeaders(),
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
@@ -184,9 +170,11 @@ export default function PaymentPage() {
         },
         modal: {
           ondismiss: () => setPaying(false),
+          escape: false,
         },
         prefill: {
-          vpa: upiId.trim().toLowerCase(),
+          contact: loaded?.customer?.phone || '',
+          email: loaded?.customer?.email || '',
         },
         theme: { color: '#db2777' },
       }

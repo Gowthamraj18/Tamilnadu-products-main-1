@@ -1194,6 +1194,71 @@ async def payments_verify(payload: VerifyPaymentPayload, request: Request, sessi
     )
 
 
+@app.post("/create-order")
+async def create_order(payload: CreatePaymentOrderPayload) -> JSONResponse:
+    razor_key_id = settings.get("razorpay_key_id")
+    razor_key_secret = settings.get("razorpay_key_secret")
+    if not razor_key_id or not razor_key_secret:
+        return _json_error(500, error="Payment service not configured")
+
+    from razorpay import Client as RazorpayClient
+
+    rzp = RazorpayClient(auth=(razor_key_id, razor_key_secret))
+
+    try:
+        razorpay_order = rzp.order.create(
+            {
+                "amount": payload.amount,
+                "currency": "INR",
+                "receipt": f"receipt_{payload.orderId}",
+                "notes": {"orderId": payload.orderId}
+            }
+        )
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "data": {
+                    "id": razorpay_order.get("id"),
+                    "amount": razorpay_order.get("amount"),
+                    "currency": razorpay_order.get("currency")
+                }
+            }
+        )
+    except Exception as e:
+        return _json_error(500, error=f"Failed to create order: {str(e)}")
+
+
+@app.post("/verify-payment")
+async def verify_payment(payload: VerifyPaymentPayload) -> JSONResponse:
+    razor_key_secret = settings.get("razorpay_key_secret")
+    if not razor_key_secret:
+        return _json_error(500, error="Payment service not configured")
+
+    is_valid = razorpay_signature_matches(
+        razor_key_secret,
+        order_id=payload.razorpay_order_id,
+        payment_id=payload.razorpay_payment_id,
+        signature=payload.razorpay_signature,
+    )
+    
+    if not is_valid:
+        return _json_error(400, error="Invalid payment signature")
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "success": True,
+            "message": "Payment verified successfully",
+            "data": {
+                "razorpay_payment_id": payload.razorpay_payment_id,
+                "razorpay_order_id": payload.razorpay_order_id,
+                "orderId": payload.orderId
+            }
+        }
+    )
+
+
 @app.post("/api/contact")
 async def contact(payload: ContactPayload, session: SessionDep) -> JSONResponse:
     contact_row = Contact(
