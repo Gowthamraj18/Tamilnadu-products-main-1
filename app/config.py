@@ -20,7 +20,7 @@ def get_settings():
         "sqlite_path": sqlite_path,
         "sqlite_url": sqlite_url,
         "jwt_secret": os.getenv("JWT_SECRET", "your-secret-key"),
-        "frontend_url": os.getenv("FRONTEND_URL", "http://localhost:5173"),
+        "frontend_url": os.getenv("FRONTEND_URL", "https://tamilnaduproducts.com"),
         "smtp_host": os.getenv("SMTP_HOST", "").strip(),
         "smtp_port": int(os.getenv("SMTP_PORT", "587")),
         "smtp_user": os.getenv("SMTP_USER", "").strip(),

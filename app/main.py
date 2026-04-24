@@ -53,7 +53,7 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 allowed_origins = [
     settings.get("frontend_url"),
-    "https://divine-gentleness-production-7e46.up.railway.app",
+    "https://tamilnaduproducts.com",
 ]
 allowed_origins = [o for o in allowed_origins if o]
 
@@ -92,6 +92,12 @@ async def _startup() -> None:
     logging.getLogger("app").info("Starting up; database init…")
     await init_db()
     logging.getLogger("app").info("Database ready.")
+    
+    # Log frontend_dist status
+    if _FRONTEND_DIST.is_dir():
+        logging.getLogger("app").info(f"Frontend dist found at: {_FRONTEND_DIST}")
+    else:
+        logging.getLogger("app").info("Frontend dist not found - API will run in backend-only mode")
 
 
 def _json_dumps(data: Any) -> str:
@@ -486,6 +492,11 @@ async def _unique_product_slug(session: AsyncSession, base_name: str, *, exclude
             return slug
         slug = f"{base_slug}-{suffix}"
         suffix += 1
+
+
+@app.get("/")
+async def root():
+    return {"message": "API is running 🚀"}
 
 
 @app.get("/api/health")
