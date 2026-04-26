@@ -321,6 +321,10 @@ class AdminCreateProductPayload(BaseModel):
 class CreatePaymentOrderPayload(BaseModel):
     amount: int
     orderId: str
+    items: Optional[List[Dict[str, Any]]] = None
+    subtotal: Optional[float] = None
+    shipping: Optional[float] = None
+    handling: Optional[float] = None
 
 
 class VerifyPaymentPayload(BaseModel):
@@ -1195,23 +1199,67 @@ async def payments_verify(payload: VerifyPaymentPayload, request: Request, sessi
 
 
 @app.post("/create-order")
-async def create_order(payload: CreatePaymentOrderPayload) -> JSONResponse:
+async def create_order(payload: CreatePaymentOrderPayload, session: SessionDep) -> JSONResponse:
     razor_key_id = settings.get("razorpay_key_id")
     razor_key_secret = settings.get("razorpay_key_secret")
     if not razor_key_id or not razor_key_secret:
         return _json_error(500, error="Payment service not configured")
+
+    # Validate cart items if provided
+    if payload.items:
+        for item in payload.items:
+            if not item.get("product_id"):
+                return _json_error(400, error="Invalid product in order: missing product_id")
+            
+            # Check if product exists and is active
+            result = await session.execute(
+                select(Product).where(
+                    Product.id == item["product_id"],
+                    Product.active == True
+                )
+            )
+            product = result.scalar_one_or_none()
+            if not product:
+                return _json_error(400, error=f"Invalid product in order: {item.get('product_id')}")
+            
+            # Validate price (optional - for security)
+            if item.get("price") and float(item["price"]) != float(product.price):
+                return _json_error(400, error=f"Price mismatch for product: {product.name}")
+
+    # Calculate total if not provided
+    if payload.amount is None:
+        calculated_amount = 0
+        if payload.items:
+            for item in payload.items:
+                calculated_amount += float(item.get("price", 0)) * int(item.get("quantity", 1))
+        
+        if payload.shipping:
+            calculated_amount += float(payload.shipping)
+        if payload.handling:
+            calculated_amount += float(payload.handling)
+        
+        payload.amount = int(calculated_amount * 100)  # Convert to paise
 
     from razorpay import Client as RazorpayClient
 
     rzp = RazorpayClient(auth=(razor_key_id, razor_key_secret))
 
     try:
+        # Create notes with order details
+        notes = {
+            "orderId": payload.orderId,
+            "subtotal": str(payload.subtotal or ""),
+            "shipping": str(payload.shipping or ""),
+            "handling": str(payload.handling or ""),
+            "itemCount": str(len(payload.items)) if payload.items else "0"
+        }
+
         razorpay_order = rzp.order.create(
             {
                 "amount": payload.amount,
                 "currency": "INR",
                 "receipt": f"receipt_{payload.orderId}",
-                "notes": {"orderId": payload.orderId}
+                "notes": notes
             }
         )
         return JSONResponse(
@@ -1221,7 +1269,8 @@ async def create_order(payload: CreatePaymentOrderPayload) -> JSONResponse:
                 "data": {
                     "id": razorpay_order.get("id"),
                     "amount": razorpay_order.get("amount"),
-                    "currency": razorpay_order.get("currency")
+                    "currency": razorpay_order.get("currency"),
+                    "orderId": payload.orderId
                 }
             }
         )

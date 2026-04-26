@@ -295,20 +295,35 @@ const Checkout = () => {
         )
         return
       }
-      const amountPaise = Math.round(Number(orderResult.total) * 100)
-      if (!Number.isFinite(amountPaise) || amountPaise < 100) {
-        setError('Invalid order total for payment. Please refresh and try again.')
-        return
-      }
-      const response = await fetch('/api/payments/create-order', {
+      // Calculate dynamic pricing
+      const subtotal = getCartTotal()
+      const shipping = calculateShipping(subtotal)
+      const handling = calculateHandlingCharge(subtotal)
+      const total = calculateTotal(subtotal, shipping, handling)
+      
+      // Prepare cart items for backend
+      const cartItems = items.map(item => ({
+        product_id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        size: item.size || '',
+        color: item.color || ''
+      }))
+
+      const response = await fetch('/create-order', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...authPart,
         },
-        body: JSON.stringify({
-          amount: amountPaise,
+        body: JSON.stringify({ 
+          amount: Math.round(total * 100), 
           orderId: orderResult.orderId,
+          items: cartItems,
+          subtotal: subtotal,
+          shipping: shipping,
+          handling: handling
         }),
       })
 
@@ -321,11 +336,11 @@ const Checkout = () => {
           key: keyId,
           amount: razorpayOrder.amount,
           currency: razorpayOrder.currency,
-          name: 'Tamil Nadu Products',
-          description: `Order ${orderResult.orderId}`,
+          name: 'AKL EXIM / Tamil Nadu Products',
+          description: 'Product Checkout Payment',
           order_id: razorpayOrder.id,
           handler: async function (response) {
-            const verifyResponse = await fetch('/api/payments/verify', {
+            const verifyResponse = await fetch('/verify-payment', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
