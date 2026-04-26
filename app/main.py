@@ -1208,23 +1208,46 @@ async def create_order(payload: CreatePaymentOrderPayload, session: SessionDep) 
     # Validate cart items if provided
     if payload.items:
         for item in payload.items:
-            if not item.get("product_id"):
+            product_id = item.get("product_id")
+            if not product_id:
                 return _json_error(400, error="Invalid product in order: missing product_id")
+            
+            # Convert product_id to integer for comparison
+            try:
+                product_id_int = int(product_id)
+            except (ValueError, TypeError):
+                return _json_error(400, error=f"Invalid product ID format: {product_id}")
+            
+            # Debug logging
+            logging.getLogger("app").info(f"Validating product_id: {product_id_int}")
             
             # Check if product exists and is active
             result = await session.execute(
                 select(Product).where(
-                    Product.id == item["product_id"],
+                    Product.id == product_id_int,
                     Product.active == True
                 )
             )
             product = result.scalar_one_or_none()
+            
+            if product:
+                logging.getLogger("app").info(f"Product found: {product.name} (ID: {product_id_int})")
+            else:
+                logging.getLogger("app").error(f"Product NOT found: {product_id_int}")
+            
             if not product:
-                return _json_error(400, error=f"Invalid product in order: {item.get('product_id')}")
+                return _json_error(400, error=f"Invalid product in order: {product_id}")
             
             # Validate price (optional - for security)
-            if item.get("price") and float(item["price"]) != float(product.price):
-                return _json_error(400, error=f"Price mismatch for product: {product.name}")
+            item_price = item.get("price")
+            if item_price is not None:
+                try:
+                    item_price_float = float(item_price)
+                    product_price_float = float(product.price)
+                    if abs(item_price_float - product_price_float) > 0.01:  # Allow small floating point differences
+                        return _json_error(400, error=f"Price mismatch for product: {product.name}")
+                except (ValueError, TypeError):
+                    return _json_error(400, error=f"Invalid price format for product: {product.name}")
 
     # Calculate total if not provided
     if payload.amount is None:
