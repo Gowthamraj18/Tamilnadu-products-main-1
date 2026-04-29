@@ -1227,6 +1227,7 @@ async def payments_verify(payload: VerifyPaymentPayload, request: Request, sessi
 
 @app.post("/create-order")
 async def create_order(payload: CreatePaymentOrderPayload, session: SessionDep) -> JSONResponse:
+    # Updated: 2026-04-29 14:47 - Force redeploy for payment fix
     try:
         # Comprehensive debug logging - print incoming request data
         print("=" * 60)
