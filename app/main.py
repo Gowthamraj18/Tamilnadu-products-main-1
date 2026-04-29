@@ -156,13 +156,40 @@ def user_orm_to_api_dict(u: User) -> Dict[str, Any]:
 
 
 def product_orm_to_api_dict(p: Product) -> Dict[str, Any]:
-    images = json.loads(p.images_json or "[]")
-    sizes = json.loads(p.sizes_json or "[]")
-    colors = json.loads(p.colors_json or "[]")
-    tags = json.loads(p.tags_json or "[]")
-    size_stock = json.loads(p.size_stock_json or "{}")
-    seo = json.loads(p.seo_json) if p.seo_json else None
-    specs = json.loads(p.specifications_json) if p.specifications_json else None
+    try:
+        images = json.loads(p.images_json or "[]")
+    except (json.JSONDecodeError, TypeError):
+        images = []
+    
+    try:
+        sizes = json.loads(p.sizes_json or "[]")
+    except (json.JSONDecodeError, TypeError):
+        sizes = []
+    
+    try:
+        colors = json.loads(p.colors_json or "[]")
+    except (json.JSONDecodeError, TypeError):
+        colors = []
+    
+    try:
+        tags = json.loads(p.tags_json or "[]")
+    except (json.JSONDecodeError, TypeError):
+        tags = []
+    
+    try:
+        size_stock = json.loads(p.size_stock_json or "{}")
+    except (json.JSONDecodeError, TypeError):
+        size_stock = {}
+    
+    try:
+        seo = json.loads(p.seo_json) if p.seo_json else None
+    except (json.JSONDecodeError, TypeError):
+        seo = None
+    
+    try:
+        specs = json.loads(p.specifications_json) if p.specifications_json else None
+    except (json.JSONDecodeError, TypeError):
+        specs = None
     return {
         "_id": p.id,
         "name": p.name,
@@ -184,8 +211,8 @@ def product_orm_to_api_dict(p: Product) -> Dict[str, Any]:
         "active": p.active,
         "seo": seo,
         "specifications": specs,
-        "createdAt": p.created_at,
-        "updatedAt": p.updated_at,
+        "createdAt": p.created_at.isoformat() if p.created_at else None,
+        "updatedAt": p.updated_at.isoformat() if p.updated_at else None,
     }
 
 
