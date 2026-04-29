@@ -1228,10 +1228,19 @@ async def payments_verify(payload: VerifyPaymentPayload, request: Request, sessi
 @app.post("/create-order")
 async def create_order(payload: CreatePaymentOrderPayload, session: SessionDep) -> JSONResponse:
     try:
-        # Debug logging - print incoming request data
-        print("=" * 50)
-        print("CREATE-ORDER REQUEST DATA:", payload.dict())
-        print("=" * 50)
+        # Comprehensive debug logging - print incoming request data
+        print("=" * 60)
+        print("CREATE-ORDER REQUEST RECEIVED!")
+        print("REQUEST DATA:", payload.dict())
+        print("REQUEST TYPE:", type(payload))
+        print("AMOUNT TYPE:", type(payload.amount))
+        print("AMOUNT VALUE:", payload.amount)
+        print("ORDER ID:", payload.orderId)
+        print("ITEMS COUNT:", len(payload.items) if payload.items else 0)
+        if payload.items:
+            for i, item in enumerate(payload.items):
+                print(f"  ITEM {i+1}: {item}")
+        print("=" * 60)
         
         # Get Razorpay credentials from environment
         razor_key_id = settings.get("razorpay_key_id")
@@ -1252,10 +1261,14 @@ async def create_order(payload: CreatePaymentOrderPayload, session: SessionDep) 
             for i, item in enumerate(payload.items):
                 product_id = item.get("product_id")
                 print(f"ITEM {i+1}: {item}")
+                print(f"  PRODUCT_ID: {product_id} (TYPE: {type(product_id)})")
                 
                 if not product_id:
                     print("ERROR: Missing product_id")
-                    return _json_error(400, error="Invalid product in order: missing product_id")
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": "Invalid product in order: missing product_id"}
+                    )
                 
                 # Convert product_id to integer for comparison
                 try:
@@ -1296,20 +1309,29 @@ async def create_order(payload: CreatePaymentOrderPayload, session: SessionDep) 
 
         # Calculate total if not provided
         if payload.amount is None:
+            print("CALCULATING AMOUNT FROM ITEMS...")
             calculated_amount = 0
             if payload.items:
                 for item in payload.items:
-                    calculated_amount += float(item.get("price", 0)) * int(item.get("quantity", 1))
+                    item_price = float(item.get("price", 0))
+                    item_quantity = int(item.get("quantity", 1))
+                    item_total = item_price * item_quantity
+                    calculated_amount += item_total
+                    print(f"  ITEM: {item.get('name', 'Unknown')} - {item_price} x {item_quantity} = {item_total}")
             
             if payload.shipping:
-                calculated_amount += float(payload.shipping)
+                shipping_amount = float(payload.shipping)
+                calculated_amount += shipping_amount
+                print(f"  SHIPPING: {shipping_amount}")
             if payload.handling:
-                calculated_amount += float(payload.handling)
+                handling_amount = float(payload.handling)
+                calculated_amount += handling_amount
+                print(f"  HANDLING: {handling_amount}")
             
             payload.amount = int(calculated_amount * 100)  # Convert to paise
             print(f"CALCULATED AMOUNT: {calculated_amount} -> {payload.amount} paise")
 
-        print(f"FINAL AMOUNT: {payload.amount}")
+        print(f"FINAL AMOUNT: {payload.amount} (TYPE: {type(payload.amount)})")
         print(f"ORDER ID: {payload.orderId}")
 
         # Initialize Razorpay client with proper error handling
