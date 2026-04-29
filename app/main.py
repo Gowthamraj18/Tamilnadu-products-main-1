@@ -1233,14 +1233,18 @@ async def create_order(payload: CreatePaymentOrderPayload, session: SessionDep) 
         print("CREATE-ORDER REQUEST DATA:", payload.dict())
         print("=" * 50)
         
+        # Get Razorpay credentials from environment
         razor_key_id = settings.get("razorpay_key_id")
         razor_key_secret = settings.get("razorpay_key_secret")
         
         print("RAZORPAY KEYS:", f"KEY_ID: {razor_key_id}", f"SECRET: {'SET' if razor_key_secret else 'NOT SET'}")
         
         if not razor_key_id or not razor_key_secret:
-            print("ERROR: Payment service not configured")
-            return _json_error(500, error="Payment service not configured")
+            print("ERROR: Payment service not configured - missing Razorpay keys")
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Payment service not configured - missing Razorpay keys"}
+            )
 
         # Validate cart items if provided
         if payload.items:
@@ -1308,10 +1312,17 @@ async def create_order(payload: CreatePaymentOrderPayload, session: SessionDep) 
         print(f"FINAL AMOUNT: {payload.amount}")
         print(f"ORDER ID: {payload.orderId}")
 
-        from razorpay import Client as RazorpayClient
-
-        rzp = RazorpayClient(auth=(razor_key_id, razor_key_secret))
-        print("RAZORPAY CLIENT CREATED")
+        # Initialize Razorpay client with proper error handling
+        try:
+            from razorpay import Client as RazorpayClient
+            rzp = RazorpayClient(auth=(razor_key_id, razor_key_secret))
+            print("RAZORPAY CLIENT CREATED SUCCESSFULLY")
+        except Exception as e:
+            print(f"ERROR: Failed to initialize Razorpay client: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"Failed to initialize Razorpay client: {str(e)}"}
+            )
 
         # Create notes with order details
         notes = {
@@ -1322,16 +1333,29 @@ async def create_order(payload: CreatePaymentOrderPayload, session: SessionDep) 
             "itemCount": str(len(payload.items)) if payload.items else "0"
         }
 
+        # Ensure amount is in paise (integer)
+        amount_in_paise = int(payload.amount) if isinstance(payload.amount, (int, str)) else int(float(payload.amount))
+        
+        # Create Razorpay order with proper structure
         order_data = {
-            "amount": payload.amount,
+            "amount": amount_in_paise,
             "currency": "INR",
             "receipt": f"receipt_{payload.orderId}",
+            "payment_capture": 1,  # Auto-capture payment
             "notes": notes
         }
         
         print("CREATING RAZORPAY ORDER WITH DATA:", order_data)
-        razorpay_order = rzp.order.create(order_data)
-        print("RAZORPAY ORDER CREATED:", razorpay_order)
+        
+        try:
+            razorpay_order = rzp.order.create(order_data)
+            print("RAZORPAY ORDER CREATED:", razorpay_order)
+        except Exception as e:
+            print(f"ERROR: Failed to create Razorpay order: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"Failed to create Razorpay order: {str(e)}"}
+            )
         
         return JSONResponse(
             status_code=200,
@@ -1354,37 +1378,82 @@ async def create_order(payload: CreatePaymentOrderPayload, session: SessionDep) 
         print("TRACEBACK:")
         traceback.print_exc()
         print("=" * 50)
-        return _json_error(500, error=f"Failed to create order: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to create order: {str(e)}"}
+        )
 
 
 @app.post("/verify-payment")
 async def verify_payment(payload: VerifyPaymentPayload) -> JSONResponse:
-    razor_key_secret = settings.get("razorpay_key_secret")
-    if not razor_key_secret:
-        return _json_error(500, error="Payment service not configured")
-
-    is_valid = razorpay_signature_matches(
-        razor_key_secret,
-        order_id=payload.razorpay_order_id,
-        payment_id=payload.razorpay_payment_id,
-        signature=payload.razorpay_signature,
-    )
-    
-    if not is_valid:
-        return _json_error(400, error="Invalid payment signature")
-
-    return JSONResponse(
-        status_code=200,
-        content={
-            "success": True,
-            "message": "Payment verified successfully",
-            "data": {
-                "razorpay_payment_id": payload.razorpay_payment_id,
-                "razorpay_order_id": payload.razorpay_order_id,
-                "orderId": payload.orderId
+    try:
+        print("=" * 50)
+        print("VERIFY-PAYMENT REQUEST DATA:", payload.dict())
+        print("=" * 50)
+        
+        # Get Razorpay secret from environment
+        razor_key_secret = settings.get("razorpay_key_secret")
+        if not razor_key_secret:
+            print("ERROR: Payment service not configured - missing Razorpay secret")
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Payment service not configured - missing Razorpay secret"}
+            )
+        
+        print("RAZORPAY SECRET: SET")
+        print(f"PAYMENT ID: {payload.razorpay_payment_id}")
+        print(f"ORDER ID: {payload.razorpay_order_id}")
+        print(f"SIGNATURE: {payload.razorpay_signature[:20]}...")
+        
+        # Verify payment signature
+        try:
+            is_valid = razorpay_signature_matches(
+                razor_key_secret,
+                order_id=payload.razorpay_order_id,
+                payment_id=payload.razorpay_payment_id,
+                signature=payload.razorpay_signature,
+            )
+            print(f"SIGNATURE VALIDATION RESULT: {is_valid}")
+        except Exception as e:
+            print(f"ERROR: Signature validation failed: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"Signature validation failed: {str(e)}"}
+            )
+        
+        if not is_valid:
+            print("ERROR: Invalid payment signature")
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Invalid payment signature"}
+            )
+        
+        print("PAYMENT VERIFIED SUCCESSFULLY")
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "message": "Payment verified successfully",
+                "data": {
+                    "razorpay_payment_id": payload.razorpay_payment_id,
+                    "razorpay_order_id": payload.razorpay_order_id,
+                    "orderId": payload.orderId
+                }
             }
-        }
-    )
+        )
+        
+    except Exception as e:
+        print("=" * 50)
+        print("ERROR IN VERIFY-PAYMENT:", str(e))
+        print("ERROR TYPE:", type(e).__name__)
+        import traceback
+        print("TRACEBACK:")
+        traceback.print_exc()
+        print("=" * 50)
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to verify payment: {str(e)}"}
+        )
 
 
 @app.post("/api/contact")
