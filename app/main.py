@@ -1283,7 +1283,7 @@ async def create_order(payload: CreatePaymentOrderPayload, session: SessionDep) 
                         item_price_float = float(item_price)
                         product_price_float = float(product.price)
                         print(f"PRICE CHECK: Item={item_price_float}, Product={product_price_float}")
-                        if abs(item_price_float - product_price_float) > 0.01:
+                        if abs(item_price_float - product_price_float) > 1.0:  # Allow 1 rupee tolerance
                             print(f"ERROR: Price mismatch for product: {product.name}")
                             return _json_error(400, error=f"Price mismatch for product: {product.name}")
                     except (ValueError, TypeError):
