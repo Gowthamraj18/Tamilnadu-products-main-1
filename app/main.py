@@ -1227,74 +1227,92 @@ async def payments_verify(payload: VerifyPaymentPayload, request: Request, sessi
 
 @app.post("/create-order")
 async def create_order(payload: CreatePaymentOrderPayload, session: SessionDep) -> JSONResponse:
-    razor_key_id = settings.get("razorpay_key_id")
-    razor_key_secret = settings.get("razorpay_key_secret")
-    if not razor_key_id or not razor_key_secret:
-        return _json_error(500, error="Payment service not configured")
-
-    # Validate cart items if provided
-    if payload.items:
-        for item in payload.items:
-            product_id = item.get("product_id")
-            if not product_id:
-                return _json_error(400, error="Invalid product in order: missing product_id")
-            
-            # Convert product_id to integer for comparison
-            try:
-                product_id_int = int(product_id)
-            except (ValueError, TypeError):
-                return _json_error(400, error=f"Invalid product ID format: {product_id}")
-            
-            # Debug logging
-            logging.getLogger("app").info(f"Validating product_id: {product_id_int}")
-            
-            # Check if product exists and is active
-            result = await session.execute(
-                select(Product).where(
-                    Product.id == product_id_int,
-                    Product.active == True
-                )
-            )
-            product = result.scalar_one_or_none()
-            
-            if product:
-                logging.getLogger("app").info(f"Product found: {product.name} (ID: {product_id_int})")
-            else:
-                logging.getLogger("app").error(f"Product NOT found: {product_id_int}")
-            
-            if not product:
-                return _json_error(400, error=f"Invalid product in order: {product_id}")
-            
-            # Validate price (optional - for security)
-            item_price = item.get("price")
-            if item_price is not None:
-                try:
-                    item_price_float = float(item_price)
-                    product_price_float = float(product.price)
-                    if abs(item_price_float - product_price_float) > 0.01:  # Allow small floating point differences
-                        return _json_error(400, error=f"Price mismatch for product: {product.name}")
-                except (ValueError, TypeError):
-                    return _json_error(400, error=f"Invalid price format for product: {product.name}")
-
-    # Calculate total if not provided
-    if payload.amount is None:
-        calculated_amount = 0
-        if payload.items:
-            for item in payload.items:
-                calculated_amount += float(item.get("price", 0)) * int(item.get("quantity", 1))
-        
-        if payload.shipping:
-            calculated_amount += float(payload.shipping)
-        if payload.handling:
-            calculated_amount += float(payload.handling)
-        
-        payload.amount = int(calculated_amount * 100)  # Convert to paise
-
-    from razorpay import Client as RazorpayClient
-
-    rzp = RazorpayClient(auth=(razor_key_id, razor_key_secret))
-
     try:
+        # Debug logging - print incoming request data
+        print("=" * 50)
+        print("CREATE-ORDER REQUEST DATA:", payload.dict())
+        print("=" * 50)
+        
+        razor_key_id = settings.get("razorpay_key_id")
+        razor_key_secret = settings.get("razorpay_key_secret")
+        
+        print("RAZORPAY KEYS:", f"KEY_ID: {razor_key_id}", f"SECRET: {'SET' if razor_key_secret else 'NOT SET'}")
+        
+        if not razor_key_id or not razor_key_secret:
+            print("ERROR: Payment service not configured")
+            return _json_error(500, error="Payment service not configured")
+
+        # Validate cart items if provided
+        if payload.items:
+            print(f"VALIDATING {len(payload.items)} ITEMS")
+            for i, item in enumerate(payload.items):
+                product_id = item.get("product_id")
+                print(f"ITEM {i+1}: {item}")
+                
+                if not product_id:
+                    print("ERROR: Missing product_id")
+                    return _json_error(400, error="Invalid product in order: missing product_id")
+                
+                # Convert product_id to integer for comparison
+                try:
+                    product_id_int = int(product_id)
+                    print(f"PRODUCT_ID_INT: {product_id_int}")
+                except (ValueError, TypeError):
+                    print(f"ERROR: Invalid product ID format: {product_id}")
+                    return _json_error(400, error=f"Invalid product ID format: {product_id}")
+                
+                # Check if product exists and is active
+                result = await session.execute(
+                    select(Product).where(
+                        Product.id == product_id_int,
+                        Product.active == True
+                    )
+                )
+                product = result.scalar_one_or_none()
+                
+                if product:
+                    print(f"PRODUCT FOUND: {product.name} (ID: {product_id_int}, PRICE: {product.price})")
+                else:
+                    print(f"ERROR: Product NOT found: {product_id_int}")
+                    return _json_error(400, error=f"Invalid product in order: {product_id}")
+                
+                # Validate price (optional - for security)
+                item_price = item.get("price")
+                if item_price is not None:
+                    try:
+                        item_price_float = float(item_price)
+                        product_price_float = float(product.price)
+                        print(f"PRICE CHECK: Item={item_price_float}, Product={product_price_float}")
+                        if abs(item_price_float - product_price_float) > 0.01:
+                            print(f"ERROR: Price mismatch for product: {product.name}")
+                            return _json_error(400, error=f"Price mismatch for product: {product.name}")
+                    except (ValueError, TypeError):
+                        print(f"ERROR: Invalid price format for product: {product.name}")
+                        return _json_error(400, error=f"Invalid price format for product: {product.name}")
+
+        # Calculate total if not provided
+        if payload.amount is None:
+            calculated_amount = 0
+            if payload.items:
+                for item in payload.items:
+                    calculated_amount += float(item.get("price", 0)) * int(item.get("quantity", 1))
+            
+            if payload.shipping:
+                calculated_amount += float(payload.shipping)
+            if payload.handling:
+                calculated_amount += float(payload.handling)
+            
+            payload.amount = int(calculated_amount * 100)  # Convert to paise
+            print(f"CALCULATED AMOUNT: {calculated_amount} -> {payload.amount} paise")
+
+        print(f"FINAL AMOUNT: {payload.amount}")
+        print(f"ORDER ID: {payload.orderId}")
+
+        from razorpay import Client as RazorpayClient
+
+        rzp = RazorpayClient(auth=(razor_key_id, razor_key_secret))
+        print("RAZORPAY CLIENT CREATED")
+
         # Create notes with order details
         notes = {
             "orderId": payload.orderId,
@@ -1304,14 +1322,17 @@ async def create_order(payload: CreatePaymentOrderPayload, session: SessionDep) 
             "itemCount": str(len(payload.items)) if payload.items else "0"
         }
 
-        razorpay_order = rzp.order.create(
-            {
-                "amount": payload.amount,
-                "currency": "INR",
-                "receipt": f"receipt_{payload.orderId}",
-                "notes": notes
-            }
-        )
+        order_data = {
+            "amount": payload.amount,
+            "currency": "INR",
+            "receipt": f"receipt_{payload.orderId}",
+            "notes": notes
+        }
+        
+        print("CREATING RAZORPAY ORDER WITH DATA:", order_data)
+        razorpay_order = rzp.order.create(order_data)
+        print("RAZORPAY ORDER CREATED:", razorpay_order)
+        
         return JSONResponse(
             status_code=200,
             content={
@@ -1324,7 +1345,15 @@ async def create_order(payload: CreatePaymentOrderPayload, session: SessionDep) 
                 }
             }
         )
+        
     except Exception as e:
+        print("=" * 50)
+        print("ERROR IN CREATE-ORDER:", str(e))
+        print("ERROR TYPE:", type(e).__name__)
+        import traceback
+        print("TRACEBACK:")
+        traceback.print_exc()
+        print("=" * 50)
         return _json_error(500, error=f"Failed to create order: {str(e)}")
 
 
