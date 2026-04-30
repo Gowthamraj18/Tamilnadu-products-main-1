@@ -1479,51 +1479,6 @@ async def create_order_with_details(payload: CreateOrderPayload, session: Sessio
             )
 
 
-@app.get("/api/payments/diagnostic")
-async def diagnostic_payment() -> JSONResponse:
-    """Diagnostic endpoint to check Razorpay configuration"""
-    try:
-        razor_key_id = settings.get("razorpay_key_id")
-        razor_key_secret = settings.get("razorpay_key_secret")
-        
-        diagnostic = {
-            "razorpay_key_id": razor_key_id,
-            "razorpay_key_secret_set": bool(razor_key_secret),
-            "razorpay_key_secret_length": len(razor_key_secret) if razor_key_secret else 0,
-            "environment": "production" if razor_key_id and razor_key_secret else "missing_config"
-        }
-        
-        # Test Razorpay client initialization
-        if razor_key_id and razor_key_secret:
-            try:
-                from razorpay import Client as RazorpayClient
-                rzp = RazorpayClient(auth=(razor_key_id, razor_key_secret))
-                diagnostic["razorpay_client_status"] = "success"
-                diagnostic["razorpay_key_id_format"] = "valid" if razor_key_id.startswith("rzp_") else "invalid"
-            except Exception as e:
-                diagnostic["razorpay_client_status"] = "failed"
-                diagnostic["razorpay_client_error"] = str(e)
-        else:
-            diagnostic["razorpay_client_status"] = "not_configured"
-        
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": True,
-                "diagnostic": diagnostic
-            }
-        )
-        
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "error": f"Diagnostic failed: {str(e)}"
-            }
-        )
-
-
 @app.post("/verify-payment")
 @app.post("/api/orders/verify-payment")
 async def verify_payment(payload: VerifyPaymentPayload) -> JSONResponse:
