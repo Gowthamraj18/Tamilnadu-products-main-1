@@ -1409,7 +1409,7 @@ async def create_order(payload: CreatePaymentOrderPayload, session: SessionDep) 
 
 @app.post("/api/orders/create-order")
 async def create_order_with_details(payload: CreateOrderPayload, session: SessionDep) -> JSONResponse:
-    # Updated: 2026-04-29 14:53 - Add endpoint for frontend order creation with customer details
+    # Updated: 2026-04-30 17:03 - Force deployment for Razorpay payment fix
     try:
         # Comprehensive debug logging - print incoming request data
         print("=" * 60)
