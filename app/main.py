@@ -1409,7 +1409,7 @@ async def create_order(payload: CreatePaymentOrderPayload, session: SessionDep) 
 
 @app.post("/api/orders/create-order")
 async def create_order_with_details(payload: CreateOrderPayload, session: SessionDep) -> JSONResponse:
-    # Updated: 2026-04-30 17:03 - Force deployment for Razorpay payment fix
+    # Updated: 2026-04-30 17:12 - CRITICAL FIX for 500 error - IMMEDIATE DEPLOYMENT
     try:
         # Comprehensive debug logging - print incoming request data
         print("=" * 60)
