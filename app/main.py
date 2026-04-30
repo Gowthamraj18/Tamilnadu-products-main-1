@@ -1479,7 +1479,6 @@ async def create_order_with_details(payload: CreateOrderPayload, session: Sessio
             )
 
 
-@app.post("/verify-payment")
 @app.post("/api/orders/verify-payment")
 async def verify_payment(payload: VerifyPaymentPayload) -> JSONResponse:
     try:
@@ -1497,6 +1496,59 @@ async def verify_payment(payload: VerifyPaymentPayload) -> JSONResponse:
             )
         
         print("RAZORPAY SECRET: SET")
+        
+        # Get Razorpay key ID for signature verification
+        razor_key_id = settings.get("razorpay_key_id")
+        
+        # Verify payment signature using security module
+        try:
+            signature_valid = razorpay_signature_matches(
+                razor_key_secret,
+                order_id=payload.razorpay_order_id,
+                payment_id=payload.razorpay_payment_id,
+                signature=payload.razorpay_signature
+            )
+        except Exception as e:
+            print(f"ERROR: Failed to verify payment signature: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"Failed to verify payment signature: {str(e)}"}
+            )
+        )
+        
+        print(f"SIGNATURE VERIFICATION: {'VALID' if signature_valid else 'INVALID'}")
+        
+        if signature_valid:
+            print("PAYMENT VERIFICATION SUCCESS")
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "success": True,
+                    "message": "Payment verified successfully"
+                }
+            )
+        else:
+            print("PAYMENT VERIFICATION FAILED")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "error": "Invalid payment signature"
+                }
+            )
+        
+    except Exception as e:
+        print("=" * 50)
+        print("ERROR IN VERIFY-PAYMENT:", str(e))
+        print("ERROR TYPE:", type(e).__name__)
+        import traceback
+        print("TRACEBACK:")
+        traceback.print_exc()
+        print("=" * 50)
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to verify payment: {str(e)}"}
+        )
         print(f"PAYMENT ID: {payload.razorpay_payment_id}")
         print(f"ORDER ID: {payload.razorpay_order_id}")
         print(f"SIGNATURE: {payload.razorpay_signature[:20]}...")
