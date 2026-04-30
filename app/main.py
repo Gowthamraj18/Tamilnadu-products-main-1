@@ -1514,7 +1514,6 @@ async def verify_payment(payload: VerifyPaymentPayload) -> JSONResponse:
                 status_code=500,
                 content={"error": f"Failed to verify payment signature: {str(e)}"}
             )
-        )
         
         print(f"SIGNATURE VERIFICATION: {'VALID' if signature_valid else 'INVALID'}")
         
