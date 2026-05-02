@@ -1548,59 +1548,6 @@ async def verify_payment(payload: VerifyPaymentPayload) -> JSONResponse:
             status_code=500,
             content={"error": f"Failed to verify payment: {str(e)}"}
         )
-        print(f"PAYMENT ID: {payload.razorpay_payment_id}")
-        print(f"ORDER ID: {payload.razorpay_order_id}")
-        print(f"SIGNATURE: {payload.razorpay_signature[:20]}...")
-        
-        # Verify payment signature
-        try:
-            is_valid = razorpay_signature_matches(
-                razor_key_secret,
-                order_id=payload.razorpay_order_id,
-                payment_id=payload.razorpay_payment_id,
-                signature=payload.razorpay_signature,
-            )
-            print(f"SIGNATURE VALIDATION RESULT: {is_valid}")
-        except Exception as e:
-            print(f"ERROR: Signature validation failed: {str(e)}")
-            return JSONResponse(
-                status_code=500,
-                content={"error": f"Signature validation failed: {str(e)}"}
-            )
-        
-        if not is_valid:
-            print("ERROR: Invalid payment signature")
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Invalid payment signature"}
-            )
-        
-        print("PAYMENT VERIFIED SUCCESSFULLY")
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": True,
-                "message": "Payment verified successfully",
-                "data": {
-                    "razorpay_payment_id": payload.razorpay_payment_id,
-                    "razorpay_order_id": payload.razorpay_order_id,
-                    "orderId": payload.orderId
-                }
-            }
-        )
-        
-    except Exception as e:
-        print("=" * 50)
-        print("ERROR IN VERIFY-PAYMENT:", str(e))
-        print("ERROR TYPE:", type(e).__name__)
-        import traceback
-        print("TRACEBACK:")
-        traceback.print_exc()
-        print("=" * 50)
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"Failed to verify payment: {str(e)}"}
-        )
 
 
 @app.post("/api/contact")
