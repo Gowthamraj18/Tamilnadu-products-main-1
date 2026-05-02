@@ -1409,86 +1409,79 @@ async def create_order(payload: CreatePaymentOrderPayload, session: SessionDep) 
 
 @app.post("/api/orders/create-order")
 async def create_order_with_details(payload: CreateOrderPayload, session: SessionDep) -> JSONResponse:
-    """FINAL BULLETPROOF FIX - Resolves all 500 error scenarios"""
+    """Razorpay Payment API - Safe Structure"""
     try:
-        # Get Razorpay credentials with fallback
-        razor_key_id = settings.get("razorpay_key_id") or os.getenv("RAZORPAY_KEY_ID")
-        razor_key_secret = settings.get("razorpay_key_secret") or os.getenv("RAZORPAY_KEY_SECRET")
-        
-        if not razor_key_id or not razor_key_secret:
-            return JSONResponse(
-                status_code=500,
-                content={"error": "Payment service not configured - missing Razorpay keys"}
-            )
-        
-        # Validate amount with fallbacks
+        # Verify Razorpay SDK installed
         try:
-            total_amount = float(payload.totalAmount) if payload.totalAmount else 0.0
-            amount_in_paise = int(total_amount * 100)
-        except (ValueError, TypeError, AttributeError):
-            return JSONResponse(
-                status_code=400,
-                content={"error": f"Invalid amount format: {payload.totalAmount}"}
-            )
+            from razorpay import Client as RazorpayClient
+        except ImportError as e:
+            print("RAZORPAY ERROR: Razorpay SDK not installed:", str(e))
+            raise HTTPException(status_code=500, detail="Razorpay SDK not installed")
+        
+        # Verify RAZORPAY_KEY_ID exists
+        razor_key_id = settings.get("razorpay_key_id") or os.getenv("RAZORPAY_KEY_ID")
+        if not razor_key_id:
+            print("RAZORPAY ERROR: RAZORPAY_KEY_ID not found")
+            raise HTTPException(status_code=500, detail="RAZORPAY_KEY_ID not configured")
+        
+        # Verify RAZORPAY_KEY_SECRET exists
+        razor_key_secret = settings.get("razorpay_key_secret") or os.getenv("RAZORPAY_KEY_SECRET")
+        if not razor_key_secret:
+            print("RAZORPAY ERROR: RAZORPAY_KEY_SECRET not found")
+            raise HTTPException(status_code=500, detail="RAZORPAY_KEY_SECRET not configured")
+        
+        print("RAZORPAY DEBUG: Keys found - ID:", razor_key_id[:10] + "...")
+        
+        # Ensure frontend sends numeric amount only
+        try:
+            amount = int(float(payload.totalAmount) if payload.totalAmount else 0)
+            print("RAZORPAY DEBUG: Original amount:", payload.totalAmount, "Converted to int:", amount)
+        except (ValueError, TypeError, AttributeError) as e:
+            print("RAZORPAY ERROR: Invalid amount format:", str(e))
+            raise HTTPException(status_code=400, detail=f"Invalid amount format: {payload.totalAmount}")
+        
+        # Ensure amount is multiplied by 100
+        amount_in_paise = amount * 100
+        print("RAZORPAY DEBUG: Amount in paise:", amount_in_paise)
         
         # Initialize Razorpay client
         try:
-            from razorpay import Client as RazorpayClient
-            rzp = RazorpayClient(auth=(razor_key_id, razor_key_secret))
-        except ImportError:
-            return JSONResponse(
-                status_code=500,
-                content={"error": "Razorpay library not available"}
-            )
+            client = RazorpayClient(auth=(razor_key_id, razor_key_secret))
+            print("RAZORPAY DEBUG: Client initialized successfully")
         except Exception as e:
-            return JSONResponse(
-                status_code=500,
-                content={"error": f"Failed to initialize Razorpay client: {str(e)}"}
-            )
+            print("RAZORPAY ERROR: Failed to initialize client:", str(e))
+            raise HTTPException(status_code=500, detail=f"Failed to initialize Razorpay client: {str(e)}")
         
-        # Create minimal order data
-        order_data = {
-            "amount": amount_in_paise,
-            "currency": "INR",
-            "receipt": f"order_{payload.customerEmail}_{int(total_amount)}",
-            "payment_capture": 1
-        }
-        
-        # Create Razorpay order
+        # Create Razorpay order using exact safe structure
         try:
-            razorpay_order = rzp.order.create(order_data)
+            razorpay_order = client.order.create({
+                "amount": amount_in_paise,
+                "currency": "INR",
+                "payment_capture": 1
+            })
+            print("RAZORPAY DEBUG: Order created successfully:", razorpay_order.get("id"))
             
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "success": True,
-                    "data": {
-                        "id": razorpay_order.get("id"),
-                        "amount": razorpay_order.get("amount"),
-                        "currency": razorpay_order.get("currency"),
-                        "receipt": razorpay_order.get("receipt"),
-                        "customerEmail": payload.customerEmail,
-                        "customerName": payload.customerName
-                    }
-                }
-            )
+            # Return proper JSON response
+            return {
+                "success": True,
+                "order": razorpay_order
+            }
+            
         except Exception as e:
-            return JSONResponse(
-                status_code=500,
-                content={"error": f"Failed to create Razorpay order: {str(e)}"}
-            )
+            print("RAZORPAY ERROR: Failed to create order:", str(e))
+            raise HTTPException(status_code=500, detail=str(e))
+            
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        print("=" * 50)
-        print("ERROR IN CREATE-ORDER:", str(e))
+        # Prevent server crash with full logging
+        print("RAZORPAY ERROR:", str(e))
         print("ERROR TYPE:", type(e).__name__)
         import traceback
         print("TRACEBACK:")
         traceback.print_exc()
-        print("=" * 50)
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"Failed to create order: {str(e)}"}
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/orders/verify-payment")
