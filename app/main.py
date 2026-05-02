@@ -1477,6 +1477,18 @@ async def create_order_with_details(payload: CreateOrderPayload, session: Sessio
                 status_code=500,
                 content={"error": f"Failed to create Razorpay order: {str(e)}"}
             )
+    except Exception as e:
+        print("=" * 50)
+        print("ERROR IN CREATE-ORDER:", str(e))
+        print("ERROR TYPE:", type(e).__name__)
+        import traceback
+        print("TRACEBACK:")
+        traceback.print_exc()
+        print("=" * 50)
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to create order: {str(e)}"}
+        )
 
 
 @app.post("/api/orders/verify-payment")
